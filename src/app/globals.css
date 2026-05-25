@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-fraunces: "Fraunces", serif;
+  --font-archivo: "Archivo", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-archivo), sans-serif;
+  background-color: #484D52;
+  color: #F8EAD5;
+}
+
+/* ── Animations ── */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes steam {
+  0%   { opacity: 0; transform: translateY(0) scaleX(1); }
+  40%  { opacity: 0.5; }
+  100% { opacity: 0; transform: translateY(-26px) scaleX(1.4); }
+}
+
+.rise {
+  animation: riseIn 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* ── Interactive utility classes ── */
+.am-btn {
+  cursor: pointer;
+  border: none;
+  font-family: var(--font-archivo), sans-serif;
+  font-weight: 700;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.am-btn:hover:not(:disabled) { transform: translateY(-2px); }
+.am-btn:active:not(:disabled) { transform: translateY(0); }
+
+.qtybtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(248, 234, 213, 0.33);
+  background: transparent;
+  color: #F8EAD5;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.qtybtn:hover:not(:disabled) {
+  background: #F8EAD5;
+  color: #484D52;
+}
+
+.qtybtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.menucard {
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s;
+}
+
+.menucard:hover {
+  transform: translateY(-3px);
+}
+
+/* ── Order page two-column grid ── */
+.order-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+}
+
+@media (min-width: 820px) {
+  .order-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  }
+}
+
+::selection {
+  background: #2F7D4F;
+  color: #F8EAD5;
+}
