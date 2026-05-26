@@ -46,12 +46,12 @@ export async function POST(request: Request) {
   // Dev: return mock slots when using the synthetic dev service night
   const isDevTools = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_DEV_TOOLS === "1";
   if (isDevTools && serviceNightId === "dev-mock") {
-    const today = new Date().toISOString().slice(0, 10);
-    const serviceStartMs = new Date(`${today}T18:00:00-04:00`).getTime();
-    const lastPickupMs = new Date(`${today}T21:00:00-04:00`).getTime();
+    // Dev: generate slots relative to now so testing works at any hour
+    const nowMs = Date.now();
     const bakeMinutes = 4;
-    const readyMs = serviceStartMs + orderPizzas * bakeMinutes * 60_000;
-    const firstSlotMs = Math.max(roundUpToNearest5(readyMs), serviceStartMs);
+    const readyMs = nowMs + orderPizzas * bakeMinutes * 60_000;
+    const firstSlotMs = roundUpToNearest5(Math.max(readyMs, nowMs + 5 * 60_000));
+    const lastPickupMs = firstSlotMs + 3 * 60 * 60_000; // 3-hour window
     const slots: string[] = [];
     for (let t = firstSlotMs; t <= lastPickupMs && slots.length < 12; t += 15 * 60_000) {
       slots.push(new Date(t).toISOString());
