@@ -154,12 +154,12 @@ export default async function Home() {
             animationDelay: ".12s",
           }}
         >
-          Fired at 900°, 60-second bake, tomato sauce and fresh mozzarella — made
-          fresh in <strong style={{ color: "#F8EAD5" }}>Ashburn Farm</strong>.
+          Fired at 900°, 60-second bake, tomato sauce and fresh mozzarella and
+          more made fresh in <strong style={{ color: "#F8EAD5" }}>Ashburn Farm</strong>.
           Ordering opens every{" "}
-          <strong style={{ color: "#F8EAD5" }}>Wednesday</strong> for the
-          following Friday&apos;s service. Reserve your pickup window — service
-          starts at <strong style={{ color: "#F8EAD5" }}>6:00 PM</strong>.
+          <strong style={{ color: "#F8EAD5" }}>Wednesday</strong>{" "}
+          for the following Friday&apos;s service. Reserve your pickup window —
+          service starts at <strong style={{ color: "#F8EAD5" }}>6:00 PM</strong>.
         </p>
 
         {/* CTAs */}
