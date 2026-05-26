@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -44,19 +45,31 @@ export async function POST(request: Request) {
 
   // ── Validate service night ────────────────────────────────────────────────────
   if (!isDevMock) {
-    const { data: night } = await supabase
-      .from("service_nights")
-      .select("is_enabled, order_open_at, order_close_at")
-      .eq("id", serviceNightId)
-      .single();
+    // Dev: bypass ordering window when dev_window=open cookie is set
+    const isDevTools =
+      process.env.NODE_ENV === "development" ||
+      process.env.NEXT_PUBLIC_DEV_TOOLS === "1";
+    let devWindowOpen = false;
+    if (isDevTools) {
+      const cookieStore = await cookies();
+      devWindowOpen = cookieStore.get("dev_window")?.value === "open";
+    }
 
-    if (
-      !night ||
-      !night.is_enabled ||
-      night.order_open_at > now ||
-      now > night.order_close_at
-    ) {
-      return NextResponse.json({ error: "Ordering is not open" }, { status: 400 });
+    if (!devWindowOpen) {
+      const { data: night } = await supabase
+        .from("service_nights")
+        .select("is_enabled, order_open_at, order_close_at")
+        .eq("id", serviceNightId)
+        .single();
+
+      if (
+        !night ||
+        !night.is_enabled ||
+        night.order_open_at > now ||
+        now > night.order_close_at
+      ) {
+        return NextResponse.json({ error: "Ordering is not open" }, { status: 400 });
+      }
     }
   }
 
