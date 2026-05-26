@@ -14,7 +14,7 @@ async function ConfirmationLoader({ code }: { code: string }) {
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, code, customer_name, pickup_at, status, subtotal_cents, tip_cents, total_cents"
+      "id, code, customer_name, pickup_at, status, subtotal_cents, tip_cents, total_cents, cancellable_until"
     )
     .eq("code", code)
     .single();
@@ -38,6 +38,7 @@ async function ConfirmationLoader({ code }: { code: string }) {
           subtotal_cents: number;
           tip_cents: number;
           total_cents: number;
+          cancellable_until: string;
         } | null
       }
       items={

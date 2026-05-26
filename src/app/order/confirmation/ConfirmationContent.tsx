@@ -15,6 +15,12 @@ function formatPickup(iso: string) {
   });
 }
 
+function fmtCountdown(secs: number) {
+  const m = Math.floor(secs / 60);
+  const s = String(secs % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
 interface Order {
   id: string;
   code: string;
@@ -24,6 +30,7 @@ interface Order {
   subtotal_cents: number;
   tip_cents: number;
   total_cents: number;
+  cancellable_until: string;
 }
 
 interface Item {
@@ -42,8 +49,13 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
   const [polling, setPolling] = useState(
     initialOrder?.status === "pending_payment"
   );
+  const [windowSecs, setWindowSecs] = useState(0);
+  const [cancelStage, setCancelStage] = useState<
+    "idle" | "confirm" | "cancelling" | "done" | "error"
+  >("idle");
+  const [cancelError, setCancelError] = useState("");
 
-  // If the webhook hasn't fired yet, poll every 2s until status changes
+  // Poll until payment confirmed
   useEffect(() => {
     if (!polling || !initialOrder?.code) return;
     let tries = 0;
@@ -60,13 +72,48 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
         clearInterval(interval);
       }
       if (tries >= 15) {
-        // Give up polling after 30s — webhook may be delayed
         setPolling(false);
         clearInterval(interval);
       }
     }, 2000);
     return () => clearInterval(interval);
   }, [polling, initialOrder?.code]);
+
+  // Cancellation countdown
+  useEffect(() => {
+    if (!order?.cancellable_until) return;
+    const tick = () => {
+      const diff = new Date(order.cancellable_until).getTime() - Date.now();
+      setWindowSecs(Math.max(0, Math.floor(diff / 1000)));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [order?.cancellable_until]);
+
+  async function handleCancel() {
+    if (!order) return;
+    setCancelStage("cancelling");
+    setCancelError("");
+    try {
+      const res = await fetch("/api/cancel-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: order.code }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setOrder((prev) => prev ? { ...prev, status: "cancelled" } : prev);
+        setCancelStage("done");
+      } else {
+        setCancelError(data.error ?? "Something went wrong");
+        setCancelStage("error");
+      }
+    } catch {
+      setCancelError("Network error");
+      setCancelStage("error");
+    }
+  }
 
   if (!order) {
     return (
@@ -91,15 +138,89 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
   }
 
   const confirmed = order.status !== "pending_payment";
+  const isCancelled = order.status === "cancelled" || order.status === "refunded";
+  const canCancel = order.status === "new" && windowSecs > 0 && cancelStage !== "done";
 
+  // ── Cancelled state ─────────────────────────────────────────────────────────
+  if (isCancelled) {
+    return (
+      <div style={{ maxWidth: 460, width: "100%", textAlign: "center" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            background: "#60403F22",
+            border: "1px solid #60403F66",
+            borderRadius: 100,
+            padding: "6px 16px",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#60403F",
+            letterSpacing: 0.5,
+            marginBottom: 24,
+          }}
+        >
+          Order cancelled
+        </div>
+
+        <h1
+          className="font-display"
+          style={{ fontSize: "clamp(32px, 7vw, 52px)", fontWeight: 900, lineHeight: 1.1, margin: "0 0 8px" }}
+        >
+          Refund on the way.
+        </h1>
+
+        <p style={{ color: "#F8EAD5aa", fontSize: 16, marginBottom: 28 }}>
+          Your full refund of <strong style={{ color: "#F8EAD5" }}>{fmt(order.total_cents)}</strong> has
+          been issued. Allow 5–10 business days to appear on your statement.
+        </p>
+
+        <div
+          style={{
+            background: "#3A3E43",
+            border: "1px solid #F8EAD514",
+            borderRadius: 16,
+            padding: "18px 22px",
+            textAlign: "left",
+            marginBottom: 28,
+          }}
+        >
+          <span style={{ fontSize: 13, color: "#F8EAD555" }}>Order </span>
+          <span className="font-display" style={{ fontSize: 22, fontWeight: 900, letterSpacing: 1 }}>
+            {order.code}
+          </span>
+          <span style={{ fontSize: 13, color: "#F8EAD555" }}> · {fmt(order.total_cents)} refunded</span>
+        </div>
+
+        <a
+          href="/order"
+          style={{
+            display: "inline-block",
+            background: "#2F7D4F",
+            color: "#F8EAD5",
+            textDecoration: "none",
+            padding: "14px 28px",
+            borderRadius: 100,
+            fontSize: 15,
+            fontWeight: 700,
+          }}
+        >
+          Order again →
+        </a>
+
+        <div style={{ marginTop: 16 }}>
+          <a href="/" style={{ color: "#F8EAD544", textDecoration: "none", fontSize: 14 }}>
+            ← Back to home
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Normal / confirmed state ────────────────────────────────────────────────
   return (
-    <div
-      style={{
-        maxWidth: 460,
-        width: "100%",
-        textAlign: "center",
-      }}
-    >
+    <div style={{ maxWidth: 460, width: "100%", textAlign: "center" }}>
       {/* Badge */}
       <div
         style={{
@@ -309,6 +430,114 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Cancellation section ── */}
+      {confirmed && (
+        <>
+          {canCancel ? (
+            <div
+              style={{
+                marginTop: 20,
+                padding: "16px 20px",
+                background: "#3A3E43",
+                border: "1px solid #F8EAD514",
+                borderRadius: 14,
+                textAlign: "left",
+              }}
+            >
+              {cancelStage === "confirm" ? (
+                /* Confirm step */
+                <div>
+                  <p style={{ fontSize: 14, color: "#F8EAD5cc", margin: "0 0 14px" }}>
+                    Cancel and get a full refund of{" "}
+                    <strong style={{ color: "#F8EAD5" }}>{fmt(order.total_cents)}</strong>?
+                    You won't be able to undo this.
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={handleCancel}
+                      style={{
+                        flex: 1,
+                        background: "#60403F",
+                        border: "none",
+                        color: "#F8EAD5",
+                        borderRadius: 9,
+                        padding: "10px",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "var(--font-archivo), sans-serif",
+                      }}
+                    >
+                      Yes, cancel my order
+                    </button>
+                    <button
+                      onClick={() => setCancelStage("idle")}
+                      style={{
+                        flex: 1,
+                        background: "transparent",
+                        border: "1px solid #F8EAD520",
+                        color: "#F8EAD566",
+                        borderRadius: 9,
+                        padding: "10px",
+                        fontSize: 14,
+                        cursor: "pointer",
+                        fontFamily: "var(--font-archivo), sans-serif",
+                      }}
+                    >
+                      Keep it
+                    </button>
+                  </div>
+                </div>
+              ) : cancelStage === "cancelling" ? (
+                <p style={{ fontSize: 14, color: "#F8EAD555", margin: 0, textAlign: "center" }}>
+                  Cancelling…
+                </p>
+              ) : (
+                /* Idle step */
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#F8EAD5cc" }}>
+                      Changed your mind?
+                    </div>
+                    <div style={{ fontSize: 12, color: "#F8EAD544", marginTop: 2 }}>
+                      Window closes in{" "}
+                      <span style={{ color: windowSecs < 60 ? "#C9A227" : "#F8EAD577", fontWeight: 700 }}>
+                        {fmtCountdown(windowSecs)}
+                      </span>
+                    </div>
+                    {cancelStage === "error" && (
+                      <div style={{ fontSize: 12, color: "#60403F", marginTop: 4 }}>
+                        {cancelError}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setCancelStage("confirm")}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #60403F66",
+                      color: "#60403F",
+                      borderRadius: 9,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "var(--font-archivo), sans-serif",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Cancel order
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Window closed — show nothing (order is cooking) */
+            null
+          )}
+        </>
+      )}
 
       <a
         href="/"
