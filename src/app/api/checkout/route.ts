@@ -90,7 +90,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid pizza selection" }, { status: 400 });
   }
 
-  const unavailable = (pizzas as { id: string; name: string; price_cents: number; is_active: boolean }[]).find((p) => !p.is_active);
+  const typedPizzas = (pizzas as { id: string; name: string; price_cents: number; is_active: boolean }[]);
+
+  const unavailable = typedPizzas.find((p) => !p.is_active);
   if (unavailable) {
     return NextResponse.json(
       { error: `${unavailable.name} is no longer available` },
@@ -98,9 +100,23 @@ export async function POST(request: Request) {
     );
   }
 
+  // Check sold-out overrides (server-enforced — cannot be bypassed by client)
+  if (!isDevMock) {
+    const { data: nightOverrides } = await supabase
+      .from("service_nights")
+      .select("sold_out_overrides")
+      .eq("id", serviceNightId)
+      .single();
+    const overrides = ((nightOverrides as { sold_out_overrides: Record<string, boolean> } | null)?.sold_out_overrides ?? {}) as Record<string, boolean>;
+    const soldOut = typedPizzas.find((p) => overrides[p.id] === true);
+    if (soldOut) {
+      return NextResponse.json({ error: `${soldOut.name} is sold out` }, { status: 400 });
+    }
+  }
+
   // ── Calculate totals server-side ───────────────────────────────────────────────
   let subtotalCents = 0;
-  const lineItems = (pizzas as { id: string; name: string; price_cents: number; is_active: boolean }[]).map((pizza) => {
+  const lineItems = typedPizzas.map((pizza) => {
     const q = quantities[pizza.id] ?? 0;
     subtotalCents += pizza.price_cents * q;
     return { pizza, qty: q };
