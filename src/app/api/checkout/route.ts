@@ -189,7 +189,8 @@ export async function POST(request: Request) {
   } catch (stripeErr) {
     console.error("Stripe PaymentIntent error:", stripeErr);
     await supabase.from("orders").delete().eq("id", order.id);
-    return NextResponse.json({ error: "Payment setup failed" }, { status: 500 });
+    const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
+    return NextResponse.json({ error: "Payment setup failed", detail: msg }, { status: 500 });
   }
 
   // Store the PI id on the order (best-effort)
