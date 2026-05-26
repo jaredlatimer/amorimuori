@@ -24,6 +24,9 @@ const INFO_CARDS = [
 export default async function Home() {
   const availability = await getAvailability();
   const isOpen = availability.isOpen;
+  const openDayName = availability.nextOpenAt
+    ? new Date(availability.nextOpenAt).toLocaleDateString("en-US", { weekday: "long", timeZone: "America/New_York" })
+    : "Wednesday";
 
   return (
     <div
@@ -80,7 +83,7 @@ export default async function Home() {
             fontSize: 14,
           }}
         >
-          {isOpen ? "Order now" : "Opens Wednesday"}
+          {isOpen ? "Order now" : `Opens ${openDayName}`}
         </a>
       </nav>
 

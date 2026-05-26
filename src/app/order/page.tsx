@@ -87,7 +87,10 @@ export default async function OrderPage() {
         style={{ maxWidth: 1180, margin: "0 auto", padding: "0 6vw" }}
       >
         {!availability.isOpen ? (
-          <OrderingClosed nextOpenAt={availability.nextOpenAt} />
+          <OrderingClosed
+            nextOpenAt={availability.nextOpenAt}
+            orderCloseAt={availability.serviceNight?.order_close_at ?? null}
+          />
         ) : (
           <OrderForm
             groups={groups}

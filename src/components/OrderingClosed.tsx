@@ -34,16 +34,31 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-interface OrderingClosedProps {
-  nextOpenAt: string | null;
+const ET = "America/New_York";
+
+function fmtDay(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { weekday: "long", timeZone: ET });
+}
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: ET });
 }
 
-export function OrderingClosed({ nextOpenAt }: OrderingClosedProps) {
+interface OrderingClosedProps {
+  nextOpenAt: string | null;
+  orderCloseAt?: string | null;
+}
+
+export function OrderingClosed({ nextOpenAt, orderCloseAt }: OrderingClosedProps) {
   const countdown = useCountdown(nextOpenAt ?? "");
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">(
     "idle"
   );
+
+  const openDay  = nextOpenAt  ? fmtDay(nextOpenAt)   : "Wednesday";
+  const openTime = nextOpenAt  ? fmtTime(nextOpenAt)  : null;
+  const closeDay  = orderCloseAt ? fmtDay(orderCloseAt)  : "Friday";
+  const closeTime = orderCloseAt ? fmtTime(orderCloseAt) : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -113,7 +128,7 @@ export function OrderingClosed({ nextOpenAt }: OrderingClosedProps) {
           animationDelay: ".05s",
         }}
       >
-        We open Wednesday.
+        We open {openDay}.
       </h2>
 
       <p
@@ -127,10 +142,13 @@ export function OrderingClosed({ nextOpenAt }: OrderingClosedProps) {
         }}
       >
         Friday Night Take orders open every{" "}
-        <strong style={{ color: "#F8EAD5" }}>Wednesday at 12:00 AM</strong> and
-        close{" "}
-        <strong style={{ color: "#F8EAD5" }}>Friday at 8:40 PM</strong>. Check
-        back then to reserve your pickup window.
+        <strong style={{ color: "#F8EAD5" }}>
+          {openDay}{openTime ? ` at ${openTime}` : ""}
+        </strong>{" "}
+        and close{" "}
+        <strong style={{ color: "#F8EAD5" }}>
+          {closeDay}{closeTime ? ` at ${closeTime}` : ""}
+        </strong>. Check back then to reserve your pickup window.
       </p>
 
       {/* Countdown card */}
