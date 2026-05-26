@@ -281,23 +281,32 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
           </div>
         </div>
 
-        {/* Address reminder */}
+        {/* Address */}
         <div
           style={{
             marginTop: 18,
-            padding: "12px 14px",
-            background: "#484D520d",
+            padding: "14px 16px",
+            background: confirmed ? "#2F7D4F12" : "#484D520d",
+            border: `1px solid ${confirmed ? "#2F7D4F33" : "transparent"}`,
             borderRadius: 10,
-            fontSize: 13,
-            color: "#484D5299",
-            lineHeight: 1.4,
+            fontSize: 14,
+            color: "#484D52",
+            lineHeight: 1.5,
           }}
         >
-          📍 Pickup address is in your confirmation email. Look for{" "}
-          <strong style={{ color: "#484D52" }}>
-            Amori Muori — Order {order.code}
-          </strong>
-          .
+          {confirmed ? (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>📍 Pickup address</div>
+              <div>42852 Crossbow Ct, Ashburn, VA 20147</div>
+              <div style={{ fontSize: 12, color: "#484D5299", marginTop: 6 }}>
+                Also in your confirmation email — Order {order.code}
+              </div>
+            </>
+          ) : (
+            <span style={{ color: "#484D5299" }}>
+              📍 Pickup address will appear here once your payment confirms.
+            </span>
+          )}
         </div>
       </div>
 
