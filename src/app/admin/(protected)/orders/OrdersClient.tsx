@@ -146,7 +146,11 @@ export function OrdersClient({ serviceNight, initialOrders, initialItems }: Prop
 
   async function updateStatus(orderId: string, status: OrderStatus) {
     setUpdating(orderId);
-    await supabase.from("orders").update({ status }).eq("id", orderId);
+    await fetch("/api/admin/update-order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status }),
+    });
     setUpdating(null);
     // Realtime will trigger refetch, but also update optimistically
     setOrders((prev) =>

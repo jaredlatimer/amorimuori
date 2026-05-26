@@ -71,7 +71,11 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
   async function advance(order: Order) {
     setUpdating(true);
     const next = order.status === "new" ? "making" : "ready";
-    await supabase.from("orders").update({ status: next }).eq("id", order.id);
+    await fetch("/api/admin/update-order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, status: next }),
+    });
     setUpdating(false);
     if (next === "ready") {
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
