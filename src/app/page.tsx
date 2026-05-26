@@ -151,7 +151,7 @@ export default async function Home() {
             animationDelay: ".12s",
           }}
         >
-          Fired at 900°, 60-second bake, San Marzano and fior di latte — made
+          Fired at 900°, 60-second bake, tomato sauce and fresh mozzarella — made
           fresh in <strong style={{ color: "#F8EAD5" }}>Ashburn Farm</strong>.
           Ordering opens every{" "}
           <strong style={{ color: "#F8EAD5" }}>Wednesday</strong> for the
