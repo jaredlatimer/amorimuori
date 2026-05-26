@@ -82,9 +82,10 @@ const labelStyle: React.CSSProperties = {
   display: "block",
 };
 
-export function SettingsClient({ settings: initialSettings, serviceNights: initialNights }: {
+export function SettingsClient({ settings: initialSettings, serviceNights: initialNights, reminderCount: initialCount }: {
   settings: Settings;
   serviceNights: ServiceNight[];
+  reminderCount: number;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -93,6 +94,8 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [blasting, setBlasting] = useState(false);
+  const [blastResult, setBlastResult] = useState<{ sent?: number; error?: string } | null>(null);
 
   const fridays = getUpcomingFridays(16);
   const nightsByDate = Object.fromEntries(nights.map((n) => [n.service_date, n]));
@@ -135,6 +138,19 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     router.refresh();
+  }
+
+  async function sendReminders() {
+    setBlasting(true);
+    setBlastResult(null);
+    try {
+      const res = await fetch("/api/admin/send-reminders", { method: "POST" });
+      const json = await res.json();
+      setBlastResult(json);
+    } catch {
+      setBlastResult({ error: "Network error" });
+    }
+    setBlasting(false);
   }
 
   const sectionHead = (title: string) => (
@@ -240,6 +256,44 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
             Max pizzas across all orders for one night.
           </p>
         </div>
+      </>)}
+
+      {/* ── Reminders ── */}
+      {card(<>
+        {sectionHead("Reminder list")}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+          <div>
+            <div className="font-display" style={{ fontSize: 36, fontWeight: 900, lineHeight: 1 }}>
+              {initialCount}
+            </div>
+            <div style={{ fontSize: 13, color: "#F8EAD555", marginTop: 3 }}>
+              {initialCount === 1 ? "person" : "people"} waiting to be notified
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+            <button
+              onClick={sendReminders}
+              disabled={blasting || initialCount === 0}
+              style={{
+                background: initialCount === 0 ? "#2F7D4F44" : blasting ? "#2F7D4F88" : "#2F7D4F",
+                border: "none", color: "#F8EAD5", borderRadius: 10,
+                padding: "11px 22px", fontSize: 14, fontWeight: 700,
+                cursor: (blasting || initialCount === 0) ? "not-allowed" : "pointer",
+                fontFamily: "var(--font-archivo), sans-serif",
+              }}
+            >
+              {blasting ? "Sending…" : `Send reminder blast`}
+            </button>
+            {blastResult && (
+              <span style={{ fontSize: 13, color: blastResult.error ? "#60403F" : "#2F7D4F", fontWeight: 600 }}>
+                {blastResult.error ? `Error: ${blastResult.error}` : `✓ Sent to ${blastResult.sent} ${blastResult.sent === 1 ? "person" : "people"}`}
+              </span>
+            )}
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: "#F8EAD533", marginTop: 14, marginBottom: 0 }}>
+          Sends a &ldquo;Ordering is open&rdquo; email to everyone on the reminder list. Click when ordering opens Wednesday.
+        </p>
       </>)}
 
       {/* Save */}

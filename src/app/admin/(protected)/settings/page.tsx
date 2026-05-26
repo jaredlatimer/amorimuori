@@ -17,8 +17,14 @@ export default async function SettingsPage() {
     .select("id, service_date, is_enabled, nightly_total, service_start, last_pickup, order_open_at, order_close_at")
     .order("service_date", { ascending: true });
 
+  // Count reminder signups
+  const { count: reminderCount } = await supabase
+    .from("reminder_signups")
+    .select("*", { count: "exact", head: true });
+
   return (
     <SettingsClient
+      reminderCount={reminderCount ?? 0}
       settings={settings as {
         id: string;
         service_start: string;

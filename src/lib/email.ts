@@ -167,3 +167,102 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
     html,
   });
 }
+
+// ── Reminder blast ─────────────────────────────────────────────────────────────
+
+export async function sendReminderBlast(emails: string[], fridayDate?: string): Promise<number> {
+  if (emails.length === 0) return 0;
+
+  const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
+
+  const dateStr = fridayDate
+    ? new Date(fridayDate + "T12:00:00").toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric",
+      })
+    : "this Friday";
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ordering is now open</title>
+</head>
+<body style="margin:0;padding:0;background:#484D52;font-family:Georgia,serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#484D52;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:520px;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding-bottom:28px;text-align:center;">
+              <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#F8EAD5aa;font-family:Arial,sans-serif;">
+                Amori Muori
+              </p>
+              <h1 style="margin:10px 0 0;font-size:38px;font-weight:900;color:#F8EAD5;line-height:1.1;">
+                Ordering is open.
+              </h1>
+              <p style="margin:12px 0 0;font-size:17px;color:#F8EAD5cc;font-family:Arial,sans-serif;">
+                Friday Night Take is taking orders for<br />
+                <strong style="color:#F8EAD5;">${dateStr}</strong>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#F8EAD5;border-radius:16px;padding:28px;text-align:center;">
+              <p style="margin:0 0 10px;font-size:16px;color:#484D52;font-family:Arial,sans-serif;line-height:1.5;">
+                Reserve your pickup window before slots sell out.<br />
+                Fresh Neapolitan pizza, fired at 900° — ready in 60 seconds.
+              </p>
+
+              <!-- CTA -->
+              <a href="${SITE}/order"
+                style="display:inline-block;margin-top:18px;background:#2F7D4F;color:#F8EAD5;text-decoration:none;font-family:Arial,sans-serif;font-size:16px;font-weight:700;padding:16px 38px;border-radius:100px;">
+                Order now →
+              </a>
+
+              <p style="margin:18px 0 0;font-size:13px;color:#484D5266;font-family:Arial,sans-serif;">
+                Pickup at Ashburn Farm, VA · Starts at 6 PM
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 0 0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#F8EAD544;font-family:Arial,sans-serif;line-height:1.6;">
+                You asked to be notified when ordering opens.<br />
+                We only email when a new service night goes live.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  // Resend batch — max 100 per call; for a small operation this is fine
+  const BATCH_SIZE = 100;
+  let sent = 0;
+
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+    const chunk = emails.slice(i, i + BATCH_SIZE);
+    await resend.batch.send(
+      chunk.map((email) => ({
+        from: FROM,
+        to: email,
+        subject: `Ordering is open — Friday Night Take, ${dateStr}`,
+        html,
+      }))
+    );
+    sent += chunk.length;
+  }
+
+  return sent;
+}
