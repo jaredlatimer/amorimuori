@@ -1,6 +1,7 @@
 export type PizzaCategory = "Pizze Rosse" | "Pizze Bianche";
 
 export type OrderStatus =
+  | "pending_payment"
   | "new"
   | "making"
   | "ready"

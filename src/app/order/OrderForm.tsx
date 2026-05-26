@@ -1,8 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Elements } from "@stripe/react-stripe-js";
+import { stripePromise } from "@/lib/stripe-client";
+import { CheckoutFormInner } from "@/components/CheckoutForm";
 import type { Pizza } from "@/lib/types";
 import type { PizzaAvailability } from "@/lib/availability";
+
+type CheckoutState =
+  | { stage: "form" }
+  | { stage: "loading" }
+  | { stage: "payment"; clientSecret: string; code: string; totalCents: number }
+  | { stage: "error"; message: string };
 
 const TIP_OPTIONS: { label: string; value: number | null }[] = [
   { label: "15%", value: 15 },
@@ -52,8 +61,7 @@ export function OrderForm({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [checkout, setCheckout] = useState<CheckoutState>({ stage: "form" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const allPizzas = groups.flatMap((g) => g.items);
@@ -129,20 +137,49 @@ export function OrderForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitError("");
-    setSubmitting(true);
-    // Phase 4: POST /api/orders + Stripe PaymentIntent
-    await new Promise((r) => setTimeout(r, 200));
-    setSubmitError("Payment not yet wired up — coming in Phase 4.");
-    setSubmitting(false);
+    setCheckout({ stage: "loading" });
+
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceNightId,
+          quantities: qty,
+          pickupSlot: slot,
+          tipPct,
+          name,
+          phone,
+          email,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.clientSecret) {
+        setCheckout({
+          stage: "error",
+          message: data.error ?? "Something went wrong. Please try again.",
+        });
+        return;
+      }
+      setCheckout({
+        stage: "payment",
+        clientSecret: data.clientSecret,
+        code: data.code,
+        totalCents: data.totalCents,
+      });
+    } catch {
+      setCheckout({ stage: "error", message: "Network error. Please try again." });
+    }
   }
 
+  const isCheckingOut = (checkout.stage as string) === "loading";
   const canSubmit =
     totalPizzas > 0 &&
     !!slot &&
     name.trim().length > 0 &&
     phone.trim().length > 0 &&
-    email.includes("@");
+    email.includes("@") &&
+    checkout.stage === "form";
 
   const inputStyle = {
     padding: "13px 15px",
@@ -447,6 +484,61 @@ export function OrderForm({
             <p style={{ color: "#484D5299", marginTop: 14, fontSize: 15 }}>
               No pizzas yet — add some from the menu.
             </p>
+          ) : checkout.stage === "payment" ? (
+            /* ── Stripe payment panel ── */
+            <Elements
+              stripe={stripePromise}
+              options={{
+                clientSecret: checkout.clientSecret,
+                appearance: {
+                  theme: "flat",
+                  variables: {
+                    colorBackground: "#ffffff",
+                    colorText: "#484D52",
+                    colorPrimary: "#2F7D4F",
+                    colorDanger: "#C9A227",
+                    borderRadius: "11px",
+                    fontFamily: "var(--font-archivo), sans-serif",
+                    spacingUnit: "5px",
+                  },
+                },
+              }}
+            >
+              {/* Order summary */}
+              <div style={{ margin: "14px 0 4px", display: "grid", gap: 8 }}>
+                {cartItems.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}
+                  >
+                    <span><strong>{qty[p.id]}×</strong> {p.name}</span>
+                    <span style={{ fontWeight: 700 }}>
+                      ${((p.price_cents * (qty[p.id] ?? 0)) / 100).toFixed(0)}
+                    </span>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 19,
+                    fontWeight: 900,
+                    paddingTop: 10,
+                    borderTop: "1.5px solid #484D5222",
+                    marginTop: 2,
+                    fontFamily: "var(--font-fraunces), serif",
+                  }}
+                >
+                  <span>Total</span>
+                  <span>{fmt(checkout.totalCents)}</span>
+                </div>
+              </div>
+              <CheckoutFormInner
+                code={checkout.code}
+                totalCents={checkout.totalCents}
+                onBack={() => setCheckout({ stage: "form" })}
+              />
+            </Elements>
           ) : (
             <form onSubmit={handleSubmit}>
               {/* Cart items */}
@@ -731,7 +823,7 @@ export function OrderForm({
                 />
               </div>
 
-              {submitError && (
+              {checkout.stage === "error" && (
                 <p
                   style={{
                     fontSize: 13,
@@ -740,32 +832,37 @@ export function OrderForm({
                     marginTop: 8,
                   }}
                 >
-                  {submitError}
+                  {checkout.message}
                 </p>
               )}
 
               {/* Submit */}
               <button
                 type="submit"
-                disabled={!canSubmit || submitting}
+                disabled={!canSubmit || isCheckingOut}
                 className="am-btn"
                 style={{
                   width: "100%",
                   marginTop: 16,
                   background:
-                    !canSubmit || submitting ? "#484D5255" : "#2F7D4F",
+                    !canSubmit || isCheckingOut
+                      ? "#484D5255"
+                      : "#2F7D4F",
                   color: "#F8EAD5",
                   padding: "16px",
                   borderRadius: 12,
                   fontSize: 16,
-                  cursor: !canSubmit || submitting ? "not-allowed" : "pointer",
+                  cursor:
+                    !canSubmit || isCheckingOut
+                      ? "not-allowed"
+                      : "pointer",
                   textAlign: "center",
                 }}
               >
                 {!canSubmit && totalPizzas > 0
                   ? "Add your details to continue"
-                  : submitting
-                  ? "Processing…"
+                  : isCheckingOut
+                  ? "Setting up payment…"
                   : `Continue to payment · ${fmt(total)}`}
               </button>
 
