@@ -84,12 +84,18 @@ export async function POST(request: Request) {
     is_enabled: boolean;
   };
 
-  // Verify ordering window is open
+  // Verify ordering window is open (dev: bypass with dev_window=open cookie)
   const now = new Date().toISOString();
+  let devWindowOpen = false;
+  if (isDevTools) {
+    const cookieStore = await cookies();
+    devWindowOpen = cookieStore.get("dev_window")?.value === "open";
+  }
   if (
-    !night.is_enabled ||
-    night.order_open_at > now ||
-    now > night.order_close_at
+    !devWindowOpen &&
+    (!night.is_enabled ||
+      night.order_open_at > now ||
+      now > night.order_close_at)
   ) {
     return NextResponse.json(
       { error: "Ordering is not open" },
