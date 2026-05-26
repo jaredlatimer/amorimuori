@@ -54,7 +54,7 @@ export async function getAvailability(): Promise<AvailabilityData> {
   const supabase = await createClient();
   const now = new Date().toISOString();
 
-  const isDev = process.env.NODE_ENV === "development";
+  const isDev = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_DEV_TOOLS === "1";
   const cookieStore = isDev ? await cookies() : null;
   const windowOverride = cookieStore?.get("dev_window")?.value ?? "auto";
 

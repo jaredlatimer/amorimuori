@@ -31,7 +31,7 @@ export default function RootLayout({
     <html lang="en" className={`${fraunces.variable} ${archivo.variable}`}>
       <body>
         {children}
-        {process.env.NODE_ENV === "development" && <DevController />}
+        {process.env.NEXT_PUBLIC_DEV_TOOLS === "1" && <DevController />}
       </body>
     </html>
   );

@@ -44,7 +44,8 @@ export async function POST(request: Request) {
   const supabase = await createClient();
 
   // Dev: return mock slots when using the synthetic dev service night
-  if (process.env.NODE_ENV === "development" && serviceNightId === "dev-mock") {
+  const isDevTools = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_DEV_TOOLS === "1";
+  if (isDevTools && serviceNightId === "dev-mock") {
     const today = new Date().toISOString().slice(0, 10);
     const serviceStartMs = new Date(`${today}T18:00:00-04:00`).getTime();
     const lastPickupMs = new Date(`${today}T21:00:00-04:00`).getTime();
@@ -129,7 +130,7 @@ export async function POST(request: Request) {
     (rawSettings as { bake_minutes: number } | null)?.bake_minutes ?? 4;
 
   // Dev: add simulated queue size from cookie
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_DEV_TOOLS === "1") {
     const cookieStore = await cookies();
     const devQueue = parseInt(cookieStore.get("dev_queue")?.value ?? "0");
     if (!isNaN(devQueue) && devQueue > 0) queuedAhead += devQueue;
