@@ -23,10 +23,11 @@ async function getMenuGrouped(): Promise<PizzaGroup[]> {
     if (!groups.has(cat)) groups.set(cat, []);
     groups.get(cat)!.push(p);
   }
-  return Array.from(groups.entries()).map(([category, items]) => ({
-    category,
-    items,
-  }));
+  const CATEGORY_ORDER: PizzaCategory[] = ["Pizze Rosse", "Pizze Bianche"];
+  return CATEGORY_ORDER.flatMap((cat) => {
+    const items = groups.get(cat);
+    return items ? [{ category: cat, items }] : [];
+  });
 }
 
 export default async function OrderPage() {
