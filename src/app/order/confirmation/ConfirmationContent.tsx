@@ -15,10 +15,18 @@ function formatPickup(iso: string) {
   });
 }
 
-function fmtCountdown(secs: number) {
-  const m = Math.floor(secs / 60);
-  const s = String(secs % 60).padStart(2, "0");
-  return `${m}:${s}`;
+// When > 10 min left, show absolute deadline ("Friday at 7:43 PM").
+// Inside 10 min, show live M:SS countdown for urgency.
+function fmtWindow(cancellableUntil: string, secsLeft: number): { text: string; urgent: boolean } {
+  if (secsLeft > 600) {
+    const abs = new Date(cancellableUntil).toLocaleTimeString("en-US", {
+      weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+    });
+    return { text: abs, urgent: false };
+  }
+  const m = Math.floor(secsLeft / 60);
+  const s = String(secsLeft % 60).padStart(2, "0");
+  return { text: `${m}:${s}`, urgent: true };
 }
 
 interface Order {
@@ -501,10 +509,12 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
                       Changed your mind?
                     </div>
                     <div style={{ fontSize: 12, color: "#F8EAD544", marginTop: 2 }}>
-                      Window closes in{" "}
-                      <span style={{ color: windowSecs < 60 ? "#C9A227" : "#F8EAD577", fontWeight: 700 }}>
-                        {fmtCountdown(windowSecs)}
-                      </span>
+                      {(() => {
+                        const { text, urgent } = fmtWindow(order.cancellable_until, windowSecs);
+                        return urgent
+                          ? <>Closes in <span style={{ color: "#C9A227", fontWeight: 700 }}>{text}</span></>
+                          : <>Cancel before <span style={{ color: "#F8EAD577", fontWeight: 700 }}>{text}</span></>;
+                      })()}
                     </div>
                     {cancelStage === "error" && (
                       <div style={{ fontSize: 12, color: "#60403F", marginTop: 4 }}>
@@ -515,11 +525,11 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
                   <button
                     onClick={() => setCancelStage("confirm")}
                     style={{
-                      background: "transparent",
-                      border: "1px solid #60403F66",
-                      color: "#60403F",
+                      background: "#60403F",
+                      border: "none",
+                      color: "#F8EAD5",
                       borderRadius: 9,
-                      padding: "8px 16px",
+                      padding: "9px 16px",
                       fontSize: 13,
                       fontWeight: 700,
                       cursor: "pointer",

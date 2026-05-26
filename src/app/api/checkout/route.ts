@@ -43,9 +43,11 @@ export async function POST(request: Request) {
   const supabase = await createServiceClient();
   const now = new Date().toISOString();
 
-  // ── Validate service night ────────────────────────────────────────────────────
+  // ── Validate service night (one fetch covers window + sold-out + service date) ─
+  let serviceDate: string | null = null;
+  let soldOutOverrides: Record<string, boolean> = {};
+
   if (!isDevMock) {
-    // Dev: bypass ordering window when dev_window=open cookie is set
     const isDevTools =
       process.env.NODE_ENV === "development" ||
       process.env.NEXT_PUBLIC_DEV_TOOLS === "1";
@@ -55,13 +57,13 @@ export async function POST(request: Request) {
       devWindowOpen = cookieStore.get("dev_window")?.value === "open";
     }
 
-    if (!devWindowOpen) {
-      const { data: night } = await supabase
-        .from("service_nights")
-        .select("is_enabled, order_open_at, order_close_at")
-        .eq("id", serviceNightId)
-        .single();
+    const { data: night } = await supabase
+      .from("service_nights")
+      .select("is_enabled, order_open_at, order_close_at, service_date, sold_out_overrides")
+      .eq("id", serviceNightId)
+      .single();
 
+    if (!devWindowOpen) {
       if (
         !night ||
         !night.is_enabled ||
@@ -71,12 +73,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Ordering is not open" }, { status: 400 });
       }
     }
+
+    const n = night as {
+      service_date: string;
+      sold_out_overrides: Record<string, boolean>;
+    } | null;
+    serviceDate = n?.service_date ?? null;
+    soldOutOverrides = n?.sold_out_overrides ?? {};
   }
 
   // ── Fetch pizza prices from DB — never trust the client ───────────────────────
-  const pizzaIds = Object.keys(quantities).filter(
-    (id) => (quantities[id] ?? 0) > 0
-  );
+  const pizzaIds = Object.keys(quantities).filter((id) => (quantities[id] ?? 0) > 0);
   if (pizzaIds.length === 0) {
     return NextResponse.json({ error: "No pizzas selected" }, { status: 400 });
   }
@@ -90,7 +97,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid pizza selection" }, { status: 400 });
   }
 
-  const typedPizzas = (pizzas as { id: string; name: string; price_cents: number; is_active: boolean }[]);
+  const typedPizzas = pizzas as { id: string; name: string; price_cents: number; is_active: boolean }[];
 
   const unavailable = typedPizzas.find((p) => !p.is_active);
   if (unavailable) {
@@ -100,18 +107,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // Check sold-out overrides (server-enforced — cannot be bypassed by client)
-  if (!isDevMock) {
-    const { data: nightOverrides } = await supabase
-      .from("service_nights")
-      .select("sold_out_overrides")
-      .eq("id", serviceNightId)
-      .single();
-    const overrides = ((nightOverrides as { sold_out_overrides: Record<string, boolean> } | null)?.sold_out_overrides ?? {}) as Record<string, boolean>;
-    const soldOut = typedPizzas.find((p) => overrides[p.id] === true);
-    if (soldOut) {
-      return NextResponse.json({ error: `${soldOut.name} is sold out` }, { status: 400 });
-    }
+  // Check sold-out overrides (server-enforced — no-op for dev-mock since overrides = {})
+  const soldOut = typedPizzas.find((p) => soldOutOverrides[p.id] === true);
+  if (soldOut) {
+    return NextResponse.json({ error: `${soldOut.name} is sold out` }, { status: 400 });
   }
 
   // ── Calculate totals server-side ───────────────────────────────────────────────
@@ -122,8 +121,7 @@ export async function POST(request: Request) {
     return { pizza, qty: q };
   });
 
-  const tipAmt =
-    tipPct != null ? Math.round(subtotalCents * (tipPct / 100)) : 0;
+  const tipAmt = tipPct != null ? Math.round(subtotalCents * (tipPct / 100)) : 0;
   const totalCents = subtotalCents + tipAmt;
 
   if (totalCents <= 0) {
@@ -142,20 +140,35 @@ export async function POST(request: Request) {
     if (!existing) break;
   }
 
-  // ── Cancellation window: count back from pickup by bake time + 5-min buffer ──
+  // ── Cancellation window ───────────────────────────────────────────────────────
+  // Pre-service orders (placed days before the Friday service): flat 15-min window
+  // from placement — kitchen isn't running, no timing pressure.
+  //
+  // Same-day orders (placed while service is live): count back from pickup time
+  // by bake time + 5-min buffer — now timing matters.
+  //
+  // Date comparison uses ET so late-night orders (UTC next-day) match correctly.
+
   const { data: settings } = await supabase
     .from("settings")
     .select("bake_minutes")
     .single();
   const bakeMinutes = (settings as { bake_minutes: number } | null)?.bake_minutes ?? 4;
   const totalPizzas = lineItems.reduce((sum, { qty }) => sum + qty, 0);
-  const BUFFER_MS = 5 * 60 * 1000;
-  const cancellableUntil = new Date(
-    Math.max(Date.now(), new Date(pickupSlot).getTime() - totalPizzas * bakeMinutes * 60 * 1000 - BUFFER_MS)
-  ).toISOString();
+
+  const orderDateET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const isDuringService = !isDevMock && serviceDate === orderDateET;
+
+  const cancellableUntil = isDuringService
+    ? new Date(
+        Math.max(
+          Date.now(),
+          new Date(pickupSlot).getTime() - totalPizzas * bakeMinutes * 60 * 1000 - 5 * 60 * 1000
+        )
+      ).toISOString()
+    : new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   // ── Insert pending_payment order ──────────────────────────────────────────────
-
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
@@ -188,9 +201,7 @@ export async function POST(request: Request) {
     quantity: qty,
   }));
 
-  const { error: itemsError } = await supabase
-    .from("order_items")
-    .insert(items);
+  const { error: itemsError } = await supabase.from("order_items").insert(items);
 
   if (itemsError) {
     console.error("Order items error:", itemsError);
