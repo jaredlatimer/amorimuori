@@ -12,10 +12,7 @@ export async function GET() {
     .order("sort_order");
 
   if (error) {
-    return NextResponse.json(
-      { error: "Failed to load menu", detail: error.message, code: error.code },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to load menu" }, { status: 500 });
   }
 
   return NextResponse.json({ pizzas }, { headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=30" } });
