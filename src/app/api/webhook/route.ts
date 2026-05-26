@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/server";
+import { sendConfirmationEmail } from "@/lib/email";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -25,10 +26,10 @@ export async function POST(request: Request) {
     const pi = event.data.object as Stripe.PaymentIntent;
     const supabase = await createServiceClient();
 
-    // Find the order by stripe_payment_intent_id
+    // Find the order + items by stripe_payment_intent_id
     const { data: order } = await supabase
       .from("orders")
-      .select("id, code, customer_name, customer_email, pickup_at, total_cents, status")
+      .select("id, code, customer_name, customer_email, pickup_at, subtotal_cents, tip_cents, total_cents, status")
       .eq("stripe_payment_intent_id", pi.id)
       .single();
 
@@ -55,19 +56,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "DB update failed" }, { status: 500 });
     }
 
-    console.log(
-      `Order ${(order as { code: string }).code} confirmed — pickup ${(order as { pickup_at: string }).pickup_at}`
-    );
+    const o = order as {
+      id: string;
+      code: string;
+      customer_name: string;
+      customer_email: string;
+      pickup_at: string;
+      subtotal_cents: number;
+      tip_cents: number;
+      total_cents: number;
+    };
 
-    // TODO Phase 5: send confirmation email via Resend
-    // await sendConfirmationEmail({
-    //   to: order.customer_email,
-    //   name: order.customer_name,
-    //   code: order.code,
-    //   pickupAt: order.pickup_at,
-    //   totalCents: order.total_cents,
-    //   address: "42852 Crossbow Ct, Ashburn, VA 20147",
-    // });
+    console.log(`Order ${o.code} confirmed — pickup ${o.pickup_at}`);
+
+    // Fetch order items for the email
+    const { data: items } = await supabase
+      .from("order_items")
+      .select("pizza_name, quantity, unit_price_cents")
+      .eq("order_id", o.id);
+
+    // Send confirmation email
+    try {
+      await sendConfirmationEmail({
+        to: o.customer_email,
+        name: o.customer_name,
+        code: o.code,
+        pickupAt: o.pickup_at,
+        subtotalCents: o.subtotal_cents,
+        tipCents: o.tip_cents,
+        totalCents: o.total_cents,
+        items: (items ?? []) as {
+          pizza_name: string;
+          quantity: number;
+          unit_price_cents: number;
+        }[],
+      });
+    } catch (emailErr) {
+      // Don't fail the webhook if email fails — order is already confirmed
+      console.error("Confirmation email failed:", emailErr);
+    }
   }
 
   return NextResponse.json({ received: true });
