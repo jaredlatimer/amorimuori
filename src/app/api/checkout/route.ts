@@ -211,7 +211,7 @@ export async function POST(request: Request) {
       },
       receipt_email: email,
       description: `Amori Muori — Order ${code}`,
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ["card"],
     });
   } catch (stripeErr) {
     console.error("Stripe PaymentIntent error:", stripeErr);

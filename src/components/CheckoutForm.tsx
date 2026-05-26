@@ -50,6 +50,7 @@ export function CheckoutFormInner({
       <PaymentElement
         options={{
           layout: "tabs",
+          terms: { card: "never" },
         }}
       />
 
