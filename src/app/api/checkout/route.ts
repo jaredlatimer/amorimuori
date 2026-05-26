@@ -142,8 +142,19 @@ export async function POST(request: Request) {
     if (!existing) break;
   }
 
+  // ── Cancellation window: count back from pickup by bake time + 5-min buffer ──
+  const { data: settings } = await supabase
+    .from("settings")
+    .select("bake_minutes")
+    .single();
+  const bakeMinutes = (settings as { bake_minutes: number } | null)?.bake_minutes ?? 4;
+  const totalPizzas = lineItems.reduce((sum, { qty }) => sum + qty, 0);
+  const BUFFER_MS = 5 * 60 * 1000;
+  const cancellableUntil = new Date(
+    Math.max(Date.now(), new Date(pickupSlot).getTime() - totalPizzas * bakeMinutes * 60 * 1000 - BUFFER_MS)
+  ).toISOString();
+
   // ── Insert pending_payment order ──────────────────────────────────────────────
-  const cancellableUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
