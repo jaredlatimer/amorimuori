@@ -341,10 +341,10 @@ export function OrderForm({
                             style={{
                               fontSize: 11.5,
                               fontWeight: 700,
-                              color: "#60403F",
-                              background: "#60403F22",
+                              color: "#F8EAD5",
+                              background: "#60403F",
                               borderRadius: 100,
-                              padding: "2px 9px",
+                              padding: "3px 10px",
                               textTransform: "uppercase",
                               letterSpacing: 0.5,
                             }}
