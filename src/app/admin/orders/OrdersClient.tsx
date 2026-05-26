@@ -1,0 +1,420 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+type OrderStatus =
+  | "new"
+  | "making"
+  | "ready"
+  | "picked_up"
+  | "cancelled"
+  | "refunded";
+
+interface Order {
+  id: string;
+  code: string;
+  customer_name: string;
+  customer_phone: string;
+  pickup_at: string;
+  status: OrderStatus;
+  subtotal_cents: number;
+  tip_cents: number;
+  total_cents: number;
+  placed_at: string;
+}
+
+interface Item {
+  order_id: string;
+  pizza_name: string;
+  quantity: number;
+  unit_price_cents: number;
+}
+
+interface ServiceNight {
+  id: string;
+  service_date: string;
+  service_start: string;
+  last_pickup: string;
+  nightly_total: number;
+}
+
+interface Props {
+  serviceNight: ServiceNight;
+  initialOrders: Order[];
+  initialItems: Item[];
+}
+
+function fmt(cents: number) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  });
+}
+
+function formatDate(d: string) {
+  return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  new: "New",
+  making: "Making",
+  ready: "Ready",
+  picked_up: "Picked up",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+};
+
+const STATUS_COLORS: Record<OrderStatus, { bg: string; color: string }> = {
+  new: { bg: "#C9A22722", color: "#C9A227" },
+  making: { bg: "#2F7D4F22", color: "#2F7D4F" },
+  ready: { bg: "#4A90D922", color: "#4A90D9" },
+  picked_up: { bg: "#F8EAD510", color: "#F8EAD555" },
+  cancelled: { bg: "#60403F22", color: "#60403F" },
+  refunded: { bg: "#60403F22", color: "#60403F" },
+};
+
+const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
+  new: "making",
+  making: "ready",
+  ready: "picked_up",
+};
+
+const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
+  new: "Start making",
+  making: "Mark ready",
+  ready: "Picked up ✓",
+};
+
+export function OrdersClient({ serviceNight, initialOrders, initialItems }: Props) {
+  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [items, setItems] = useState<Item[]>(initialItems);
+  const [updating, setUpdating] = useState<string | null>(null);
+
+  const supabase = createClient();
+
+  const refetch = useCallback(async () => {
+    const { data: freshOrders } = await supabase
+      .from("orders")
+      .select(
+        "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at"
+      )
+      .eq("service_night_id", serviceNight.id)
+      .neq("status", "pending_payment")
+      .order("pickup_at", { ascending: true });
+
+    const freshIds = ((freshOrders ?? []) as Order[]).map((o) => o.id);
+    const { data: freshItems } =
+      freshIds.length > 0
+        ? await supabase
+            .from("order_items")
+            .select("order_id, pizza_name, quantity, unit_price_cents")
+            .in("order_id", freshIds)
+        : { data: [] };
+
+    setOrders((freshOrders ?? []) as Order[]);
+    setItems((freshItems ?? []) as Item[]);
+  }, [serviceNight.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel(`orders-admin-${serviceNight.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `service_night_id=eq.${serviceNight.id}`,
+        },
+        () => { refetch(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [serviceNight.id, refetch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function updateStatus(orderId: string, status: OrderStatus) {
+    setUpdating(orderId);
+    await supabase.from("orders").update({ status }).eq("id", orderId);
+    setUpdating(null);
+    // Realtime will trigger refetch, but also update optimistically
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+    );
+  }
+
+  // Summary stats
+  const activeOrders = orders.filter(
+    (o) => o.status !== "cancelled" && o.status !== "refunded"
+  );
+  const totalPizzas = items
+    .filter((i) => activeOrders.some((o) => o.id === i.order_id))
+    .reduce((s, i) => s + i.quantity, 0);
+  const totalRevenue = activeOrders.reduce((s, o) => s + o.total_cents, 0);
+
+  const grouped = {
+    new: orders.filter((o) => o.status === "new"),
+    making: orders.filter((o) => o.status === "making"),
+    ready: orders.filter((o) => o.status === "ready"),
+    done: orders.filter(
+      (o) => o.status === "picked_up" || o.status === "cancelled" || o.status === "refunded"
+    ),
+  };
+
+  return (
+    <div style={{ paddingTop: 32 }}>
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <h1
+            className="font-display"
+            style={{ fontSize: 28, fontWeight: 900, margin: 0 }}
+          >
+            Tonight's Orders
+          </h1>
+          <p style={{ color: "#F8EAD566", fontSize: 14, margin: "4px 0 0" }}>
+            {formatDate(serviceNight.service_date)} ·{" "}
+            {serviceNight.service_start.slice(0, 5)} –{" "}
+            {serviceNight.last_pickup.slice(0, 5)}
+          </p>
+        </div>
+
+        {/* Summary pills */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {[
+            { label: `${activeOrders.length} orders` },
+            { label: `${totalPizzas} pizzas` },
+            { label: fmt(totalRevenue) },
+          ].map((s) => (
+            <span
+              key={s.label}
+              style={{
+                background: "#484D52",
+                border: "1px solid #F8EAD515",
+                borderRadius: 100,
+                padding: "5px 14px",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#F8EAD5cc",
+              }}
+            >
+              {s.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {orders.length === 0 ? (
+        <p style={{ color: "#F8EAD544", fontSize: 16, marginTop: 48, textAlign: "center" }}>
+          No orders yet tonight.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gap: 32 }}>
+          {(
+            [
+              { key: "new", label: "Queued" },
+              { key: "making", label: "In the oven" },
+              { key: "ready", label: "Ready for pickup" },
+              { key: "done", label: "Done" },
+            ] as const
+          ).map(({ key, label }) => {
+            const group = grouped[key];
+            if (group.length === 0) return null;
+            return (
+              <section key={key}>
+                <h2
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: 1.5,
+                    textTransform: "uppercase",
+                    color: "#F8EAD555",
+                    margin: "0 0 12px",
+                  }}
+                >
+                  {label} · {group.length}
+                </h2>
+                <div style={{ display: "grid", gap: 12 }}>
+                  {group.map((order) => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      items={items.filter((i) => i.order_id === order.id)}
+                      updating={updating === order.id}
+                      onAdvance={() => {
+                        const next = NEXT_STATUS[order.status];
+                        if (next) updateStatus(order.id, next);
+                      }}
+                      onCancel={() => updateStatus(order.id, "cancelled")}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrderCard({
+  order,
+  items,
+  updating,
+  onAdvance,
+  onCancel,
+}: {
+  order: Order;
+  items: Item[];
+  updating: boolean;
+  onAdvance: () => void;
+  onCancel: () => void;
+}) {
+  const sc = STATUS_COLORS[order.status];
+  const nextLabel = NEXT_LABEL[order.status];
+  const canCancel = order.status === "new" || order.status === "making";
+  const terminal = order.status === "picked_up" || order.status === "cancelled" || order.status === "refunded";
+
+  return (
+    <div
+      style={{
+        background: "#484D52",
+        border: "1px solid #F8EAD510",
+        borderRadius: 16,
+        padding: "18px 20px",
+        opacity: terminal ? 0.6 : 1,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        {/* Left: order info */}
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span
+              className="font-display"
+              style={{ fontSize: 22, fontWeight: 900, color: "#F8EAD5" }}
+            >
+              {order.code}
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                background: sc.bg,
+                color: sc.color,
+                borderRadius: 100,
+                padding: "3px 10px",
+                letterSpacing: 0.5,
+              }}
+            >
+              {STATUS_LABELS[order.status]}
+            </span>
+            <span style={{ fontSize: 14, color: "#2F7D4F", fontWeight: 700 }}>
+              ⏰ {formatTime(order.pickup_at)}
+            </span>
+          </div>
+
+          <div style={{ marginTop: 6, fontSize: 14, color: "#F8EAD5cc" }}>
+            {order.customer_name} · {order.customer_phone}
+          </div>
+
+          {/* Items */}
+          <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+            {items.map((item, i) => (
+              <span key={i} style={{ fontSize: 14, color: "#F8EAD5" }}>
+                <strong>{item.quantity}×</strong> {item.pizza_name}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: total + actions */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 8,
+          }}
+        >
+          <span
+            className="font-display"
+            style={{ fontSize: 20, fontWeight: 900, color: "#F8EAD5" }}
+          >
+            {fmt(order.total_cents)}
+          </span>
+
+          {!terminal && (
+            <div style={{ display: "flex", gap: 8 }}>
+              {canCancel && (
+                <button
+                  onClick={onCancel}
+                  disabled={updating}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #60403F66",
+                    color: "#60403F",
+                    borderRadius: 8,
+                    padding: "7px 14px",
+                    fontSize: 13,
+                    cursor: updating ? "not-allowed" : "pointer",
+                    fontFamily: "var(--font-archivo), sans-serif",
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+              {nextLabel && (
+                <button
+                  onClick={onAdvance}
+                  disabled={updating}
+                  style={{
+                    background: updating ? "#2F7D4F55" : "#2F7D4F",
+                    border: "none",
+                    color: "#F8EAD5",
+                    borderRadius: 8,
+                    padding: "7px 16px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: updating ? "not-allowed" : "pointer",
+                    fontFamily: "var(--font-archivo), sans-serif",
+                  }}
+                >
+                  {updating ? "…" : nextLabel}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
