@@ -131,35 +131,40 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
           </h2>
           <div style={{ display: "grid", gap: 8 }}>
             {items.map((pizza, idx) => (
-              <div key={pizza.id} style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, opacity: pizza.is_active ? 1 : 0.5 }}>
+              <div key={pizza.id} style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: 12, opacity: pizza.is_active ? 1 : 0.5, position: "relative" }}>
                 {/* Sort arrows */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0, paddingTop: 2 }}>
                   <button onClick={() => moveSort(pizza, -1)} disabled={idx === 0} style={{ background: "transparent", border: "none", color: idx === 0 ? "#F8EAD522" : "#F8EAD555", cursor: idx === 0 ? "default" : "pointer", fontSize: 12, padding: "1px 4px" }}>▲</button>
                   <button onClick={() => moveSort(pizza, 1)} disabled={idx === items.length - 1} style={{ background: "transparent", border: "none", color: idx === items.length - 1 ? "#F8EAD522" : "#F8EAD555", cursor: idx === items.length - 1 ? "default" : "pointer", fontSize: 12, padding: "1px 4px" }}>▼</button>
                 </div>
 
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Info + actions */}
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 28 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 700, fontSize: 15, color: "#F8EAD5" }}>{pizza.name}</span>
                     <span style={{ fontSize: 14, color: "#2F7D4F", fontWeight: 700 }}>${(pizza.price_cents / 100).toFixed(0)}</span>
-                    {pizza.is_special && <span style={{ fontSize: 11, fontWeight: 700, background: "#E8C24A", color: "#484D52", borderRadius: 100, padding: "2px 8px" }}>Special</span>}
                     {!pizza.is_active && <span style={{ fontSize: 11, fontWeight: 700, color: "#F8EAD544", border: "1px solid #F8EAD520", borderRadius: 100, padding: "2px 8px" }}>Hidden</span>}
                     <span style={{ fontSize: 12, color: "#F8EAD544" }}>Cap: {pizza.nightly_cap}</span>
                   </div>
                   {pizza.description && <div style={{ fontSize: 13, color: "#F8EAD566", marginTop: 2 }}>{pizza.description}</div>}
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <button onClick={() => toggleActive(pizza)} style={{ background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD566", borderRadius: 7, padding: "5px 10px", fontSize: 12, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>
+                      {pizza.is_active ? "Hide" : "Show"}
+                    </button>
+                    <button onClick={() => openEdit(pizza)} style={{ background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD5", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>
+                      Edit
+                    </button>
+                  </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => toggleSpecial(pizza)} title="Toggle special" style={{ background: pizza.is_special ? "#E8C24A22" : "transparent", border: `1px solid ${pizza.is_special ? "#E8C24A44" : "#F8EAD520"}`, color: pizza.is_special ? "#E8C24A" : "#F8EAD544", borderRadius: 7, padding: "5px 10px", fontSize: 12, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>★</button>
-                  <button onClick={() => toggleActive(pizza)} style={{ background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD566", borderRadius: 7, padding: "5px 10px", fontSize: 12, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>
-                    {pizza.is_active ? "Hide" : "Show"}
-                  </button>
-                  <button onClick={() => openEdit(pizza)} style={{ background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD5", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>
-                    Edit
-                  </button>
-                </div>
+                {/* Special star — upper right */}
+                <button
+                  onClick={() => toggleSpecial(pizza)}
+                  title="Toggle special"
+                  style={{ position: "absolute", top: 10, right: 12, background: "transparent", border: "none", fontSize: 18, color: pizza.is_special ? "#E8C24A" : "#F8EAD522", cursor: "pointer", padding: 0, lineHeight: 1 }}
+                >
+                  ★
+                </button>
               </div>
             ))}
           </div>
