@@ -362,8 +362,8 @@ function OrderCard({
         {/* Left: order info */}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span className="font-display" style={{ fontSize: 22, fontWeight: 900, color: "#F8EAD5" }}>
-              {order.code}
+            <span className="font-display" style={{ fontSize: 24, fontWeight: 900, color: "#F8EAD5" }}>
+              {order.customer_name}
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, background: sc.bg, color: sc.color, borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5 }}>
               {STATUS_LABELS[order.status]}
@@ -372,8 +372,8 @@ function OrderCard({
               ⏰ {formatTime(order.pickup_at)}
             </span>
           </div>
-          <div style={{ marginTop: 6, fontSize: 14, color: "#F8EAD5cc" }}>
-            {order.customer_name} · {order.customer_phone}
+          <div style={{ marginTop: 4, fontSize: 13, color: "#F8EAD555" }}>
+            {order.code} · {order.customer_phone}
           </div>
           <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
             {items.map((item, i) => (
