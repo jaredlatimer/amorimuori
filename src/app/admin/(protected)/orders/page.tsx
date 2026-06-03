@@ -3,44 +3,55 @@ import { OrdersClient } from "./OrdersClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function OrdersPage() {
+interface ServiceNight {
+  id: string;
+  service_date: string;
+  service_start: string;
+  last_pickup: string;
+  nightly_total: number;
+}
+
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nightId?: string }>;
+}) {
+  const { nightId } = await searchParams;
   const supabase = await createClient();
 
-  // Tonight's service night (nearest enabled, order window not fully closed)
-  const { data: night } = await supabase
+  // Fetch recent + upcoming enabled service nights
+  const { data: allNights } = await supabase
     .from("service_nights")
     .select("id, service_date, service_start, last_pickup, nightly_total")
     .eq("is_enabled", true)
-    .order("service_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order("service_date", { ascending: false })
+    .limit(12);
 
-  if (!night) {
+  const nights = (allNights ?? []) as ServiceNight[];
+
+  if (nights.length === 0) {
     return (
       <div style={{ paddingTop: 60, textAlign: "center", color: "#F8EAD566" }}>
-        <p>No upcoming service night found.</p>
+        <p>No service nights found.</p>
         <p style={{ fontSize: 13, marginTop: 8 }}>
-          Create one in the Settings tab once it's built.
+          Create one in the Settings tab.
         </p>
       </div>
     );
   }
 
-  const n = night as {
-    id: string;
-    service_date: string;
-    service_start: string;
-    last_pickup: string;
-    nightly_total: number;
-  };
+  // Default to the nearest upcoming night (smallest date >= today), else most recent past
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const upcoming = [...nights].reverse().find((n) => n.service_date >= todayET);
+  const night = (nightId ? nights.find((n) => n.id === nightId) : null) ?? upcoming ?? nights[0];
 
-  // Fetch orders + items for tonight
+  // Fetch orders + items for the selected night
   const { data: orders } = await supabase
     .from("orders")
     .select(
       "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at"
     )
-    .eq("service_night_id", n.id)
+    .eq("service_night_id", night.id)
     .neq("status", "pending_payment")
     .order("pickup_at", { ascending: true });
 
@@ -54,7 +65,8 @@ export default async function OrdersPage() {
 
   return (
     <OrdersClient
-      serviceNight={n}
+      serviceNight={night}
+      allNights={nights}
       initialOrders={(orders ?? []) as Parameters<typeof OrdersClient>[0]["initialOrders"]}
       initialItems={(allItems ?? []) as Parameters<typeof OrdersClient>[0]["initialItems"]}
     />

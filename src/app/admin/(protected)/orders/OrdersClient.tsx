@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type OrderStatus =
@@ -41,6 +42,7 @@ interface ServiceNight {
 
 interface Props {
   serviceNight: ServiceNight;
+  allNights: ServiceNight[];
   initialOrders: Order[];
   initialItems: Item[];
 }
@@ -95,12 +97,14 @@ const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
   ready: "Picked up ✓",
 };
 
-export function OrdersClient({ serviceNight, initialOrders, initialItems }: Props) {
+export function OrdersClient({ serviceNight, allNights, initialOrders, initialItems }: Props) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState<string | null>(null);
 
+  const router = useRouter();
   const supabase = createClient();
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
   const refetch = useCallback(async () => {
     const { data: freshOrders } = await supabase
@@ -178,6 +182,38 @@ export function OrdersClient({ serviceNight, initialOrders, initialItems }: Prop
 
   return (
     <div style={{ paddingTop: 32 }}>
+      {/* Night selector */}
+      {allNights.length > 1 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+          {[...allNights].reverse().map((n) => {
+            const active = n.id === serviceNight.id;
+            const isPast = n.service_date < todayET;
+            return (
+              <button
+                key={n.id}
+                onClick={() => router.push(`/admin/orders?nightId=${n.id}`)}
+                style={{
+                  background: active ? "#F8EAD5" : "transparent",
+                  color: active ? "#484D52" : isPast ? "#F8EAD533" : "#F8EAD5aa",
+                  border: `1px solid ${active ? "#F8EAD5" : "#F8EAD520"}`,
+                  borderRadius: 100,
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  fontWeight: active ? 700 : 500,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-archivo), sans-serif",
+                }}
+              >
+                {new Date(n.service_date + "T12:00:00").toLocaleDateString("en-US", {
+                  month: "short", day: "numeric",
+                })}
+                {isPast && " ·  past"}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Header */}
       <div
         style={{
