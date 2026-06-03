@@ -138,6 +138,22 @@ body {
   }
 }
 
+/* Admin nav: hamburger on mobile, tabs on desktop */
+.admin-nav-hamburger {
+  display: none;
+}
+@media (max-width: 639px) {
+  .admin-nav-tabs {
+    display: none !important;
+  }
+  .admin-nav-signout {
+    display: none !important;
+  }
+  .admin-nav-hamburger {
+    display: flex;
+  }
+}
+
 ::selection {
   background: #2F7D4F;
   color: #F8EAD5;
