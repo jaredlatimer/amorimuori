@@ -6,10 +6,13 @@ export const dynamic = "force-dynamic";
 export default async function KitchenPage() {
   const supabase = await createClient();
 
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
   const { data: night } = await supabase
     .from("service_nights")
     .select("id, service_date, service_start, last_pickup")
     .eq("is_enabled", true)
+    .gte("service_date", todayET)
     .order("service_date", { ascending: true })
     .limit(1)
     .maybeSingle();
