@@ -1,8 +1,26 @@
 import { Resend } from "resend";
+import { createHmac } from "crypto";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
 const FROM = process.env.RESEND_FROM ?? "Amori Muori <orders@amorimuori.com>";
+
+export function generateUnsubscribeSig(email: string): string {
+  const secret = process.env.UNSUBSCRIBE_SECRET;
+  if (!secret) throw new Error("UNSUBSCRIBE_SECRET env var not set");
+  return createHmac("sha256", secret)
+    .update(email.toLowerCase().trim())
+    .digest("hex")
+    .slice(0, 32);
+}
+
+export function verifyUnsubscribeSig(email: string, sig: string): boolean {
+  try {
+    return generateUnsubscribeSig(email) === sig;
+  } catch {
+    return false;
+  }
+}
 const PICKUP_ADDRESS = "42852 Crossbow Ct, Ashburn, VA 20147";
 
 function fmt(cents: number) {
@@ -337,6 +355,111 @@ export async function sendReminderBlast(emails: string[], fridayDate?: string): 
         subject: `Ordering is open — Friday Night Take, ${dateStr}`,
         html,
       }))
+    );
+    sent += chunk.length;
+  }
+
+  return sent;
+}
+
+// ── Event blast ────────────────────────────────────────────────────────────────
+
+export interface BlastData {
+  emails: string[];
+  subject: string;
+  body: string;
+  eventDate?: string; // "YYYY-MM-DD"
+}
+
+export async function sendBlast({ emails, subject, body, eventDate }: BlastData): Promise<number> {
+  if (emails.length === 0) return 0;
+
+  const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
+
+  const dateStr = eventDate
+    ? new Date(eventDate + "T12:00:00").toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric",
+      })
+    : null;
+
+  const bodyHtml = body
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => `<p style="margin:0 0 12px;font-size:16px;color:#484D52;font-family:Arial,sans-serif;line-height:1.6;">${l}</p>`)
+    .join("");
+
+  const BATCH_SIZE = 100;
+  let sent = 0;
+
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+    const chunk = emails.slice(i, i + BATCH_SIZE);
+    await resend.batch.send(
+      chunk.map((email) => {
+        const sig = generateUnsubscribeSig(email);
+        const unsubUrl = `${SITE}/unsubscribe?email=${encodeURIComponent(email)}&sig=${sig}`;
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background:#484D52;font-family:Georgia,serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#484D52;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:520px;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding-bottom:28px;text-align:center;">
+              <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#F8EAD5aa;font-family:Arial,sans-serif;">
+                Amori Muori
+              </p>
+              <h1 style="margin:10px 0 0;font-size:34px;font-weight:900;color:#F8EAD5;line-height:1.1;font-family:Georgia,serif;">
+                ${subject}
+              </h1>
+              ${dateStr ? `<p style="margin:10px 0 0;font-size:18px;font-weight:700;color:#2F7D4F;font-family:Arial,sans-serif;">${dateStr}</p>` : ""}
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#F8EAD5;border-radius:16px;padding:28px;">
+              ${bodyHtml}
+              ${dateStr ? `
+              <div style="text-align:center;margin-top:22px;">
+                <a href="${SITE}/order"
+                  style="display:inline-block;background:#2F7D4F;color:#F8EAD5;text-decoration:none;font-family:Arial,sans-serif;font-size:16px;font-weight:700;padding:16px 38px;border-radius:100px;">
+                  Order now →
+                </a>
+              </div>
+              <p style="margin:16px 0 0;font-size:13px;color:#484D5266;text-align:center;font-family:Arial,sans-serif;">
+                Pickup at Ashburn Farm, VA
+              </p>` : ""}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 0 0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#F8EAD544;font-family:Arial,sans-serif;line-height:1.8;">
+                You're receiving this because you've ordered from Amori Muori.<br />
+                <a href="${unsubUrl}" style="color:#F8EAD566;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+        return { from: FROM, to: email, subject, html };
+      })
     );
     sent += chunk.length;
   }
