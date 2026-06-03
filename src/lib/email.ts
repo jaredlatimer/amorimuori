@@ -94,7 +94,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
                 Amori Muori
               </p>
               <h1 style="margin:8px 0 0;font-size:36px;font-weight:900;color:#F8EAD5;line-height:1.1;">
-                See you tonight!
+                Thank you!
               </h1>
               <p style="margin:8px 0 0;font-size:16px;color:#F8EAD5aa;font-family:Arial,sans-serif;">
                 Your order is confirmed, ${name}.
