@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Pizza {
@@ -10,8 +11,14 @@ interface Pizza {
   nightly_cap: number;
 }
 
+interface ServiceNightSummary {
+  id: string;
+  service_date: string;
+}
+
 interface Props {
   serviceNight: { id: string; service_date: string; nightly_total: number; sold_out_overrides: Record<string, boolean> };
+  allNights: ServiceNightSummary[];
   pizzas: Pizza[];
   sold: Record<string, number>;
   totalSold: number;
@@ -21,10 +28,12 @@ function fmtDate(d: string) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-export function InventoryClient({ serviceNight, pizzas, sold, totalSold }: Props) {
+export function InventoryClient({ serviceNight, allNights, pizzas, sold, totalSold }: Props) {
+  const router = useRouter();
   const supabase = createClient();
   const [overrides, setOverrides] = useState<Record<string, boolean>>(serviceNight.sold_out_overrides ?? {});
   const [toggling, setToggling] = useState<string | null>(null);
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
   const poolRemaining = Math.max(0, serviceNight.nightly_total - totalSold);
   const poolPct = Math.round((totalSold / serviceNight.nightly_total) * 100);
@@ -46,6 +55,38 @@ export function InventoryClient({ serviceNight, pizzas, sold, totalSold }: Props
 
   return (
     <div style={{ paddingTop: 32, maxWidth: 720 }}>
+      {/* Night selector */}
+      {allNights.length > 1 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+          {[...allNights].reverse().map((n) => {
+            const active = n.id === serviceNight.id;
+            const isPast = n.service_date < todayET;
+            return (
+              <button
+                key={n.id}
+                onClick={() => router.push(`/admin/inventory?nightId=${n.id}`)}
+                style={{
+                  background: active ? "#F8EAD5" : "transparent",
+                  color: active ? "#484D52" : isPast ? "#F8EAD533" : "#F8EAD5aa",
+                  border: `1px solid ${active ? "#F8EAD5" : "#F8EAD520"}`,
+                  borderRadius: 100,
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  fontWeight: active ? 700 : 500,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-archivo), sans-serif",
+                }}
+              >
+                {new Date(n.service_date + "T12:00:00").toLocaleDateString("en-US", {
+                  month: "short", day: "numeric",
+                })}
+                {isPast && " · past"}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ marginBottom: 28 }}>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 4px" }}>Inventory</h1>
         <p style={{ color: "#F8EAD566", fontSize: 14, margin: 0 }}>{fmtDate(serviceNight.service_date)}</p>

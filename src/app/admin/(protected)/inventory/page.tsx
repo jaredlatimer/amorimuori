@@ -3,18 +3,31 @@ import { InventoryClient } from "./InventoryClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function InventoryPage() {
+interface ServiceNight {
+  id: string;
+  service_date: string;
+  nightly_total: number;
+  sold_out_overrides: Record<string, boolean>;
+}
+
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nightId?: string }>;
+}) {
+  const { nightId } = await searchParams;
   const supabase = await createClient();
 
-  const { data: night } = await supabase
+  const { data: allNights } = await supabase
     .from("service_nights")
     .select("id, service_date, nightly_total, sold_out_overrides")
     .eq("is_enabled", true)
-    .order("service_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order("service_date", { ascending: false })
+    .limit(12);
 
-  if (!night) {
+  const nights = (allNights ?? []) as ServiceNight[];
+
+  if (nights.length === 0) {
     return (
       <div style={{ paddingTop: 60, textAlign: "center", color: "#F8EAD566" }}>
         <p>No upcoming service night. Enable one in Settings.</p>
@@ -22,13 +35,15 @@ export default async function InventoryPage() {
     );
   }
 
-  const n = night as { id: string; service_date: string; nightly_total: number; sold_out_overrides: Record<string, boolean> };
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const upcoming = [...nights].reverse().find((n) => n.service_date >= todayET);
+  const night = (nightId ? nights.find((n) => n.id === nightId) : null) ?? upcoming ?? nights[0];
 
-  // Confirmed orders (not cancelled/pending)
+  // Confirmed orders (not cancelled/pending/refunded)
   const { data: orders } = await supabase
     .from("orders")
     .select("id")
-    .eq("service_night_id", n.id)
+    .eq("service_night_id", night.id)
     .not("status", "in", '("pending_payment","cancelled","refunded")');
 
   const orderIds = ((orders ?? []) as { id: string }[]).map((o) => o.id);
@@ -42,7 +57,6 @@ export default async function InventoryPage() {
     .eq("is_active", true)
     .order("category").order("sort_order");
 
-  // Tally sold per pizza
   const sold: Record<string, number> = {};
   ((items ?? []) as { pizza_id: string; quantity: number }[]).forEach((i) => {
     sold[i.pizza_id] = (sold[i.pizza_id] ?? 0) + i.quantity;
@@ -52,7 +66,9 @@ export default async function InventoryPage() {
 
   return (
     <InventoryClient
-      serviceNight={n}
+      key={night.id}
+      serviceNight={night}
+      allNights={nights}
       pizzas={(pizzas ?? []) as { id: string; name: string; category: string; nightly_cap: number }[]}
       sold={sold}
       totalSold={totalSold}
