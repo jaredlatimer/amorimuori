@@ -306,6 +306,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
                         if (next) updateStatus(order.id, next);
                       }}
                       onCancel={() => updateStatus(order.id, "cancelled")}
+                      onRestore={() => updateStatus(order.id, "new")}
                     />
                   ))}
                 </div>
@@ -324,17 +325,28 @@ function OrderCard({
   updating,
   onAdvance,
   onCancel,
+  onRestore,
 }: {
   order: Order;
   items: Item[];
   updating: boolean;
   onAdvance: () => void;
   onCancel: () => void;
+  onRestore: () => void;
 }) {
+  const [confirmAction, setConfirmAction] = useState<"cancel" | "restore" | null>(null);
+
   const sc = STATUS_COLORS[order.status];
   const nextLabel = NEXT_LABEL[order.status];
   const canCancel = order.status === "new" || order.status === "making";
-  const terminal = order.status === "picked_up" || order.status === "cancelled" || order.status === "refunded";
+  const isCancelled = order.status === "cancelled";
+  const terminal = order.status === "picked_up" || order.status === "refunded";
+
+  const btnBase: React.CSSProperties = {
+    borderRadius: 8, padding: "7px 14px", fontSize: 13,
+    cursor: updating ? "not-allowed" : "pointer",
+    fontFamily: "var(--font-archivo), sans-serif", border: "none",
+  };
 
   return (
     <div
@@ -343,50 +355,26 @@ function OrderCard({
         border: "1px solid #F8EAD510",
         borderRadius: 16,
         padding: "18px 20px",
-        opacity: terminal ? 0.6 : 1,
+        opacity: terminal || isCancelled ? 0.7 : 1,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         {/* Left: order info */}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span
-              className="font-display"
-              style={{ fontSize: 22, fontWeight: 900, color: "#F8EAD5" }}
-            >
+            <span className="font-display" style={{ fontSize: 22, fontWeight: 900, color: "#F8EAD5" }}>
               {order.code}
             </span>
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                background: sc.bg,
-                color: sc.color,
-                borderRadius: 100,
-                padding: "3px 10px",
-                letterSpacing: 0.5,
-              }}
-            >
+            <span style={{ fontSize: 12, fontWeight: 700, background: sc.bg, color: sc.color, borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5 }}>
               {STATUS_LABELS[order.status]}
             </span>
             <span style={{ fontSize: 14, color: "#2F7D4F", fontWeight: 700 }}>
               ⏰ {formatTime(order.pickup_at)}
             </span>
           </div>
-
           <div style={{ marginTop: 6, fontSize: 14, color: "#F8EAD5cc" }}>
             {order.customer_name} · {order.customer_phone}
           </div>
-
-          {/* Items */}
           <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
             {items.map((item, i) => (
               <span key={i} style={{ fontSize: 14, color: "#F8EAD5" }}>
@@ -397,56 +385,59 @@ function OrderCard({
         </div>
 
         {/* Right: total + actions */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 8,
-          }}
-        >
-          <span
-            className="font-display"
-            style={{ fontSize: 20, fontWeight: 900, color: "#F8EAD5" }}
-          >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+          <span className="font-display" style={{ fontSize: 20, fontWeight: 900, color: "#F8EAD5" }}>
             {fmt(order.total_cents)}
           </span>
 
-          {!terminal && (
+          {/* Confirm cancel */}
+          {confirmAction === "cancel" && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Cancel this order?</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>Keep it</button>
+                <button onClick={() => { setConfirmAction(null); onCancel(); }} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>Yes, cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Confirm restore */}
+          {confirmAction === "restore" && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Restore to queue?</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>No</button>
+                <button onClick={() => { setConfirmAction(null); onRestore(); }} disabled={updating} style={{ ...btnBase, background: "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}>Yes, restore</button>
+              </div>
+            </div>
+          )}
+
+          {/* Normal actions */}
+          {confirmAction === null && (
             <div style={{ display: "flex", gap: 8 }}>
               {canCancel && (
                 <button
-                  onClick={onCancel}
+                  onClick={() => setConfirmAction("cancel")}
                   disabled={updating}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #60403F66",
-                    color: "#60403F",
-                    borderRadius: 8,
-                    padding: "7px 14px",
-                    fontSize: 13,
-                    cursor: updating ? "not-allowed" : "pointer",
-                    fontFamily: "var(--font-archivo), sans-serif",
-                  }}
+                  style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}
                 >
                   Cancel
+                </button>
+              )}
+              {isCancelled && (
+                <button
+                  onClick={() => setConfirmAction("restore")}
+                  disabled={updating}
+                  style={{ ...btnBase, background: "#2F7D4F22", border: "1px solid #2F7D4F66", color: "#2F7D4F", fontWeight: 700 }}
+                >
+                  Restore
                 </button>
               )}
               {nextLabel && (
                 <button
                   onClick={onAdvance}
                   disabled={updating}
-                  style={{
-                    background: updating ? "#2F7D4F55" : "#2F7D4F",
-                    border: "none",
-                    color: "#F8EAD5",
-                    borderRadius: 8,
-                    padding: "7px 16px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: updating ? "not-allowed" : "pointer",
-                    fontFamily: "var(--font-archivo), sans-serif",
-                  }}
+                  style={{ ...btnBase, background: updating ? "#2F7D4F55" : "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}
                 >
                   {updating ? "…" : nextLabel}
                 </button>
