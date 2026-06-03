@@ -65,6 +65,7 @@ export default async function OrdersPage({
 
   return (
     <OrdersClient
+      key={night.id}
       serviceNight={night}
       allNights={nights}
       initialOrders={(orders ?? []) as Parameters<typeof OrdersClient>[0]["initialOrders"]}
