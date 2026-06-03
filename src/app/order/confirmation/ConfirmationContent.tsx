@@ -259,7 +259,12 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
           margin: "0 0 8px",
         }}
       >
-        {confirmed ? "See you tonight!" : "Hang tight…"}
+        {confirmed
+          ? new Date(order.pickup_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) ===
+            new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+            ? "See you tonight!"
+            : "See you Friday!"
+          : "Hang tight…"}
       </h1>
 
       {confirmed && (
