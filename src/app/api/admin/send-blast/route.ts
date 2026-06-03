@@ -59,7 +59,8 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ sent });
   } catch (err) {
-    console.error("Blast send error:", err);
-    return NextResponse.json({ error: "Failed to send" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Blast send error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
