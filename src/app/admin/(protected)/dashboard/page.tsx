@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { DashboardClient } from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
 
@@ -9,18 +10,30 @@ function fmtDate(d: string) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-export default async function DashboardPage() {
+interface ServiceNight {
+  id: string;
+  service_date: string;
+  nightly_total: number;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nightId?: string }>;
+}) {
+  const { nightId } = await searchParams;
   const supabase = await createClient();
 
-  const { data: night } = await supabase
+  const { data: allNightsRaw } = await supabase
     .from("service_nights")
     .select("id, service_date, nightly_total")
     .eq("is_enabled", true)
-    .order("service_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order("service_date", { ascending: false })
+    .limit(12);
 
-  if (!night) {
+  const allNights = (allNightsRaw ?? []) as ServiceNight[];
+
+  if (allNights.length === 0) {
     return (
       <div style={{ paddingTop: 60, textAlign: "center", color: "#F8EAD566" }}>
         <p>No upcoming service night. Enable one in Settings.</p>
@@ -28,7 +41,9 @@ export default async function DashboardPage() {
     );
   }
 
-  const n = night as { id: string; service_date: string; nightly_total: number };
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const upcoming = [...allNights].reverse().find((n) => n.service_date >= todayET);
+  const n = (nightId ? allNights.find((n) => n.id === nightId) : null) ?? upcoming ?? allNights[0];
 
   const { data: orders } = await supabase
     .from("orders")
@@ -45,7 +60,6 @@ export default async function DashboardPage() {
   const tips = confirmed.reduce((s, o) => s + o.tip_cents, 0);
   const total = confirmed.reduce((s, o) => s + o.total_cents, 0);
 
-  // Per-pizza breakdown
   const { data: items } = confirmed.length > 0
     ? await supabase.from("order_items").select("pizza_name, quantity").in("order_id", confirmed.map((o) => o.id))
     : { data: [] };
@@ -70,45 +84,45 @@ export default async function DashboardPage() {
 
   return (
     <div style={{ paddingTop: 32, maxWidth: 800 }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 4px" }}>Dashboard</h1>
-        <p style={{ color: "#F8EAD566", fontSize: 14, margin: 0 }}>{fmtDate(n.service_date)}</p>
-      </div>
-
-      {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 32 }}>
-        {statCard("Revenue", fmt(revenue))}
-        {statCard("Tips", fmt(tips))}
-        {statCard("Total collected", fmt(total))}
-        {statCard("Orders", `${confirmed.length}`, cancelled.length > 0 ? `${cancelled.length} cancelled` : undefined)}
-        {statCard("Pizzas sold", `${totalPizzas}`, `of ${n.nightly_total} cap`)}
-      </div>
-
-      {/* Per-pizza bar chart */}
-      {pizzaRows.length > 0 && (
-        <div style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 16, padding: "22px 24px" }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#F8EAD577", margin: "0 0 18px" }}>
-            Sold by pizza
-          </h2>
-          <div style={{ display: "grid", gap: 12 }}>
-            {pizzaRows.map(([name, qty]) => (
-              <div key={name}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 14 }}>
-                  <span style={{ fontWeight: 600 }}>{name}</span>
-                  <span style={{ color: "#2F7D4F", fontWeight: 700 }}>{qty}</span>
-                </div>
-                <div style={{ height: 8, background: "#F8EAD510", borderRadius: 4, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${Math.round((qty / maxQty) * 100)}%`, background: "#2F7D4F", borderRadius: 4, transition: "width 0.3s" }} />
-                </div>
-              </div>
-            ))}
-          </div>
+      <DashboardClient serviceNightId={n.id} allNights={allNights}>
+        <div style={{ marginBottom: 28 }}>
+          <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 4px" }}>Dashboard</h1>
+          <p style={{ color: "#F8EAD566", fontSize: 14, margin: 0 }}>{fmtDate(n.service_date)}</p>
         </div>
-      )}
 
-      {os.length === 0 && (
-        <p style={{ color: "#F8EAD544", textAlign: "center", marginTop: 48, fontSize: 16 }}>No orders yet tonight.</p>
-      )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 32 }}>
+          {statCard("Revenue", fmt(revenue))}
+          {statCard("Tips", fmt(tips))}
+          {statCard("Total collected", fmt(total))}
+          {statCard("Orders", `${confirmed.length}`, cancelled.length > 0 ? `${cancelled.length} cancelled` : undefined)}
+          {statCard("Pizzas sold", `${totalPizzas}`, `of ${n.nightly_total} cap`)}
+        </div>
+
+        {pizzaRows.length > 0 && (
+          <div style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 16, padding: "22px 24px" }}>
+            <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#F8EAD577", margin: "0 0 18px" }}>
+              Sold by pizza
+            </h2>
+            <div style={{ display: "grid", gap: 12 }}>
+              {pizzaRows.map(([name, qty]) => (
+                <div key={name}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 14 }}>
+                    <span style={{ fontWeight: 600 }}>{name}</span>
+                    <span style={{ color: "#2F7D4F", fontWeight: 700 }}>{qty}</span>
+                  </div>
+                  <div style={{ height: 8, background: "#F8EAD510", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.round((qty / maxQty) * 100)}%`, background: "#2F7D4F", borderRadius: 4, transition: "width 0.3s" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {os.length === 0 && (
+          <p style={{ color: "#F8EAD544", textAlign: "center", marginTop: 48, fontSize: 16 }}>No orders yet.</p>
+        )}
+      </DashboardClient>
     </div>
   );
 }
