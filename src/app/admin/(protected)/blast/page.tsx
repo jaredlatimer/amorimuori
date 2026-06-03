@@ -18,5 +18,13 @@ export default async function BlastPage() {
       .filter((e: string | undefined): e is string => !!e && !unsubSet.has(e))
   ).size;
 
-  return <BlastClient recipientCount={recipientCount} />;
+  const recipients = [
+    ...new Set(
+      (orders ?? [])
+        .map((o: { customer_email: string }) => o.customer_email?.toLowerCase())
+        .filter((e: string | undefined): e is string => !!e && !unsubSet.has(e))
+    ),
+  ] as string[];
+
+  return <BlastClient recipientCount={recipientCount} recipients={recipients} />;
 }

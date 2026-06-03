@@ -25,7 +25,7 @@ const labelStyle: React.CSSProperties = {
   display: "block",
 };
 
-export function BlastClient({ recipientCount }: { recipientCount: number }) {
+export function BlastClient({ recipientCount, recipients }: { recipientCount: number; recipients: string[] }) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -93,10 +93,23 @@ export function BlastClient({ recipientCount }: { recipientCount: number }) {
         </span>
       </div>
 
-      {recipientCount === 0 && (
+      {recipientCount === 0 ? (
         <p style={{ color: "#F8EAD544", fontSize: 14, marginBottom: 24 }}>
           No eligible recipients yet — customers appear here once their order is picked up.
         </p>
+      ) : (
+        <div style={{ marginBottom: 28, background: "#3A3E43", borderRadius: 12, padding: "14px 16px" }}>
+          <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#F8EAD555", letterSpacing: 0.8, textTransform: "uppercase" }}>
+            Recipients
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {recipients.map((email) => (
+              <span key={email} style={{ fontSize: 13, color: "#F8EAD5aa", background: "#484D52", borderRadius: 6, padding: "4px 10px" }}>
+                {email}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
 
       {step === "compose" && (
