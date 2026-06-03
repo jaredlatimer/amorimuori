@@ -348,94 +348,90 @@ function OrderCard({
     fontFamily: "var(--font-archivo), sans-serif", border: "none",
   };
 
+  const actions = (
+    <div>
+      {confirmAction === "cancel" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Cancel this order?</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>Keep it</button>
+            <button onClick={() => { setConfirmAction(null); onCancel(); }} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>Yes, cancel</button>
+          </div>
+        </div>
+      )}
+      {confirmAction === "restore" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Restore to queue?</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>No</button>
+            <button onClick={() => { setConfirmAction(null); onRestore(); }} disabled={updating} style={{ ...btnBase, background: "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}>Yes, restore</button>
+          </div>
+        </div>
+      )}
+      {confirmAction === null && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {nextLabel && (
+            <button onClick={onAdvance} disabled={updating} style={{ ...btnBase, background: updating ? "#2F7D4F55" : "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}>
+              {updating ? "…" : nextLabel}
+            </button>
+          )}
+          {isCancelled && (
+            <button onClick={() => setConfirmAction("restore")} disabled={updating} style={{ ...btnBase, background: "#2F7D4F22", border: "1px solid #2F7D4F66", color: "#2F7D4F", fontWeight: 700 }}>
+              Restore
+            </button>
+          )}
+          {canCancel && (
+            <button onClick={() => setConfirmAction("cancel")} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div
-      style={{
-        background: "#484D52",
-        border: "1px solid #F8EAD510",
-        borderRadius: 16,
-        padding: "18px 20px",
-        opacity: terminal || isCancelled ? 0.7 : 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      {/* Row 1: Name + status badge */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span className="font-display" style={{ fontSize: 24, fontWeight: 900, color: "#F8EAD5" }}>
-          {order.customer_name}
-        </span>
-        <span style={{ fontSize: 12, fontWeight: 700, background: sc.bg, color: sc.color, borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5 }}>
-          {STATUS_LABELS[order.status]}
-        </span>
-      </div>
+    <div style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 16, padding: "18px 20px", opacity: terminal || isCancelled ? 0.7 : 1 }}>
+      <div className="order-card-body">
+        {/* Left: order info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span className="font-display" style={{ fontSize: 24, fontWeight: 900, color: "#F8EAD5" }}>
+              {order.customer_name}
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, background: sc.bg, color: sc.color, borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5 }}>
+              {STATUS_LABELS[order.status]}
+            </span>
+          </div>
+          <div style={{ marginTop: 4, fontSize: 15, color: "#2F7D4F", fontWeight: 700 }}>
+            ⏰ {formatTime(order.pickup_at)}
+          </div>
+          <div style={{ marginTop: 3, fontSize: 13, color: "#F8EAD555" }}>
+            {order.code} · {order.customer_phone}
+          </div>
+          <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+            {items.map((item, i) => (
+              <span key={i} style={{ fontSize: 14, color: "#F8EAD5" }}>
+                <strong>{item.quantity}×</strong> {item.pizza_name}
+              </span>
+            ))}
+          </div>
+          {/* Price + actions on mobile (below items) */}
+          <div className="order-card-mobile-actions">
+            <div className="font-display" style={{ fontSize: 20, fontWeight: 900, color: "#F8EAD5", marginTop: 10 }}>
+              {fmt(order.total_cents)}
+            </div>
+            <div style={{ marginTop: 8 }}>{actions}</div>
+          </div>
+        </div>
 
-      {/* Row 2: Pickup time */}
-      <div style={{ fontSize: 15, color: "#2F7D4F", fontWeight: 700 }}>
-        ⏰ {formatTime(order.pickup_at)}
-      </div>
-
-      {/* Row 3: Code + phone */}
-      <div style={{ fontSize: 13, color: "#F8EAD555" }}>
-        {order.code} · {order.customer_phone}
-      </div>
-
-      {/* Row 4: Items */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 2 }}>
-        {items.map((item, i) => (
-          <span key={i} style={{ fontSize: 14, color: "#F8EAD5" }}>
-            <strong>{item.quantity}×</strong> {item.pizza_name}
+        {/* Right: price + actions on wider screens */}
+        <div className="order-card-right">
+          <span className="font-display" style={{ fontSize: 20, fontWeight: 900, color: "#F8EAD5" }}>
+            {fmt(order.total_cents)}
           </span>
-        ))}
-      </div>
-
-      {/* Row 5: Price */}
-      <div className="font-display" style={{ fontSize: 20, fontWeight: 900, color: "#F8EAD5", marginTop: 4 }}>
-        {fmt(order.total_cents)}
-      </div>
-
-      {/* Row 6: Actions */}
-      <div style={{ marginTop: 4 }}>
-        {confirmAction === "cancel" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Cancel this order?</span>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>Keep it</button>
-              <button onClick={() => { setConfirmAction(null); onCancel(); }} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>Yes, cancel</button>
-            </div>
-          </div>
-        )}
-
-        {confirmAction === "restore" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Restore to queue?</span>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>No</button>
-              <button onClick={() => { setConfirmAction(null); onRestore(); }} disabled={updating} style={{ ...btnBase, background: "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}>Yes, restore</button>
-            </div>
-          </div>
-        )}
-
-        {confirmAction === null && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {nextLabel && (
-              <button onClick={onAdvance} disabled={updating} style={{ ...btnBase, background: updating ? "#2F7D4F55" : "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}>
-                {updating ? "…" : nextLabel}
-              </button>
-            )}
-            {isCancelled && (
-              <button onClick={() => setConfirmAction("restore")} disabled={updating} style={{ ...btnBase, background: "#2F7D4F22", border: "1px solid #2F7D4F66", color: "#2F7D4F", fontWeight: 700 }}>
-                Restore
-              </button>
-            )}
-            {canCancel && (
-              <button onClick={() => setConfirmAction("cancel")} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>
-                Cancel
-              </button>
-            )}
-          </div>
-        )}
+          {actions}
+        </div>
       </div>
     </div>
   );

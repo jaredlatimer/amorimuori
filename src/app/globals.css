@@ -99,6 +99,37 @@ body {
   }
 }
 
+/* Order card: single column on mobile, two-column on wider screens */
+.order-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.order-card-mobile-actions {
+  display: block;
+}
+.order-card-right {
+  display: none;
+}
+@media (min-width: 640px) {
+  .order-card-body {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .order-card-mobile-actions {
+    display: none;
+  }
+  .order-card-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+}
+
 ::selection {
   background: #2F7D4F;
   color: #F8EAD5;
