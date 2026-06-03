@@ -114,7 +114,6 @@ export function AdminNav() {
             color: "#F8EAD5",
             cursor: "pointer",
             padding: 6,
-            display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
