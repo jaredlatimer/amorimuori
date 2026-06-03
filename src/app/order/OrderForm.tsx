@@ -41,6 +41,7 @@ export interface PizzaGroup {
 interface OrderFormProps {
   groups: PizzaGroup[];
   serviceNightId: string;
+  serviceDate: string;
   availability: Record<string, PizzaAvailability>;
   poolRemaining: number;
   nightlyTotal: number;
@@ -49,10 +50,14 @@ interface OrderFormProps {
 export function OrderForm({
   groups,
   serviceNightId,
+  serviceDate,
   availability,
   poolRemaining,
   nightlyTotal,
 }: OrderFormProps) {
+  const isTonight =
+    serviceDate ===
+    new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const [qty, setQty] = useState<Record<string, number>>({});
   const [slots, setSlots] = useState<string[]>([]);
   const [slot, setSlot] = useState("");
@@ -234,8 +239,8 @@ export function OrderForm({
             }}
           >
             {nightSoldOut
-              ? "Sold out tonight"
-              : `${poolRemaining} of ${nightlyTotal} left tonight`}
+              ? `Sold out ${isTonight ? "tonight" : "this Friday"}`
+              : `${poolRemaining} of ${nightlyTotal} left ${isTonight ? "tonight" : "this Friday"}`}
           </span>
         </div>
 

@@ -96,6 +96,7 @@ export default async function OrderPage() {
           <OrderForm
             groups={groups}
             serviceNightId={availability.serviceNight!.id}
+            serviceDate={availability.serviceNight!.service_date}
             availability={availability.pizzaAvailability}
             poolRemaining={availability.poolRemaining}
             nightlyTotal={availability.serviceNight!.nightly_total}
