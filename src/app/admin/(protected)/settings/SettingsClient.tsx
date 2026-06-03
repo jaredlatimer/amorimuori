@@ -126,14 +126,21 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
 
   async function saveSettings() {
     setSaving(true);
-    await supabase.from("settings").update({
-      service_start: settings.service_start,
-      last_pickup: settings.last_pickup,
-      order_open_day: settings.order_open_day,
-      order_close_time: settings.order_close_time,
-      bake_minutes: settings.bake_minutes,
-      nightly_pool: settings.nightly_pool,
-    }).eq("id", settings.id);
+    const today = new Date().toISOString().slice(0, 10);
+    await Promise.all([
+      supabase.from("settings").update({
+        service_start: settings.service_start,
+        last_pickup: settings.last_pickup,
+        order_open_day: settings.order_open_day,
+        order_close_time: settings.order_close_time,
+        bake_minutes: settings.bake_minutes,
+        nightly_pool: settings.nightly_pool,
+      }).eq("id", settings.id),
+      // Propagate new pool size to all upcoming service nights
+      supabase.from("service_nights")
+        .update({ nightly_total: settings.nightly_pool })
+        .gte("service_date", today),
+    ]);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
