@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -101,10 +101,47 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
+  const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
+  const [toasts, setToasts] = useState<{ id: string; message: string; exiting: boolean }[]>([]);
+
+  function addToast(message: string) {
+    const id = `toast-${Date.now()}`;
+    setToasts((prev) => [...prev, { id, message, exiting: false }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.map((t) => t.id === id ? { ...t, exiting: true } : t));
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 400);
+    }, 4000);
+  }
 
   const router = useRouter();
   const supabase = createClient();
   const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+  function fakeNewOrder() {
+    const id = `fake-${Date.now()}`;
+    const fakeOrder: Order = {
+      id,
+      code: "TST-99",
+      customer_name: "Test Customer",
+      customer_phone: "555-0000",
+      pickup_at: new Date(Date.now() + 30 * 60000).toISOString(),
+      status: "new",
+      subtotal_cents: 2800,
+      tip_cents: 300,
+      total_cents: 3100,
+      placed_at: new Date().toISOString(),
+    };
+    const fakeItem: Item = { order_id: id, pizza_name: "Margherita", quantity: 2, unit_price_cents: 1400 };
+    prevIdsRef.current = new Set([...prevIdsRef.current, id]);
+    setOrders((prev) => [...prev, fakeOrder]);
+    setItems((prev) => [...prev, fakeItem]);
+    setGlowingIds((prev) => new Set([...prev, id]));
+    addToast("New order received");
+    setTimeout(() => {
+      setGlowingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    }, 60000);
+  }
 
   const refetch = useCallback(async () => {
     const { data: freshOrders } = await supabase
@@ -125,7 +162,23 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
             .in("order_id", freshIds)
         : { data: [] };
 
-    setOrders((freshOrders ?? []) as Order[]);
+    const fresh = (freshOrders ?? []) as Order[];
+    const newIds = fresh.filter((o) => !prevIdsRef.current.has(o.id)).map((o) => o.id);
+    prevIdsRef.current = new Set(fresh.map((o) => o.id));
+
+    if (newIds.length > 0) {
+      addToast(`New order${newIds.length > 1 ? `s (${newIds.length})` : ""} received`);
+      setGlowingIds((prev) => new Set([...prev, ...newIds]));
+      setTimeout(() => {
+        setGlowingIds((prev) => {
+          const next = new Set(prev);
+          newIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }, 60000);
+    }
+
+    setOrders(fresh);
     setItems((freshItems ?? []) as Item[]);
   }, [serviceNight.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -239,6 +292,16 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
           </p>
         </div>
 
+        {/* Dev-only glow test */}
+        {process.env.NODE_ENV === "development" && (
+          <button
+            onClick={fakeNewOrder}
+            style={{ background: "#2F7D4F22", border: "1px solid #2F7D4F66", color: "#2F7D4F", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
+          >
+            + Fake order
+          </button>
+        )}
+
         {/* Summary pills */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {[
@@ -301,6 +364,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
                       order={order}
                       items={items.filter((i) => i.order_id === order.id)}
                       updating={updating === order.id}
+                      glowing={glowingIds.has(order.id)}
                       onAdvance={() => {
                         const next = NEXT_STATUS[order.status];
                         if (next) updateStatus(order.id, next);
@@ -315,6 +379,29 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
           })}
         </div>
       )}
+
+      {/* Toasts */}
+      <div style={{ position: "fixed", bottom: 28, right: 24, zIndex: 200, display: "flex", flexDirection: "column", gap: 10, pointerEvents: "none" }}>
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={toast.exiting ? "toast-exit" : "toast-enter"}
+            style={{
+              background: "#2F7D4F",
+              color: "#F8EAD5",
+              borderRadius: 12,
+              padding: "13px 20px",
+              fontSize: 14,
+              fontWeight: 700,
+              boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+              fontFamily: "var(--font-archivo), sans-serif",
+              whiteSpace: "nowrap",
+            }}
+          >
+            New order received
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -323,6 +410,7 @@ function OrderCard({
   order,
   items,
   updating,
+  glowing,
   onAdvance,
   onCancel,
   onRestore,
@@ -330,11 +418,32 @@ function OrderCard({
   order: Order;
   items: Item[];
   updating: boolean;
+  glowing: boolean;
   onAdvance: () => void;
   onCancel: () => void;
   onRestore: () => void;
 }) {
   const [confirmAction, setConfirmAction] = useState<"cancel" | "restore" | null>(null);
+  const [glowState, setGlowState] = useState<"hold" | "animating" | "done">("done");
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!glowing) return;
+    setGlowState("hold");
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setGlowState("animating");
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.2 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [glowing]);
 
   const sc = STATUS_COLORS[order.status];
   const nextLabel = NEXT_LABEL[order.status];
@@ -391,7 +500,12 @@ function OrderCard({
   );
 
   return (
-    <div style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 16, padding: "18px 20px", opacity: terminal || isCancelled ? 0.7 : 1 }}>
+    <div
+      ref={cardRef}
+      className={glowState === "hold" ? "order-glow-hold" : glowState === "animating" ? "order-new-glow" : undefined}
+      onAnimationEnd={() => setGlowState("done")}
+      style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 16, padding: "18px 20px", opacity: terminal || isCancelled ? 0.7 : 1 }}
+    >
       <div className="order-card-body">
         {/* Left: order info */}
         <div style={{ flex: 1, minWidth: 0 }}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Order {
@@ -40,6 +40,8 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
   );
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState(false);
+  const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
+  const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
   const supabase = createClient();
 
   const refetch = useCallback(async () => {
@@ -56,7 +58,22 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
         ? await supabase.from("order_items").select("order_id, pizza_name, quantity").in("order_id", freshIds)
         : { data: [] };
 
-    setOrders((freshOrders ?? []) as Order[]);
+    const fresh = (freshOrders ?? []) as Order[];
+    const newIds = fresh.filter((o) => !prevIdsRef.current.has(o.id)).map((o) => o.id);
+    prevIdsRef.current = new Set(fresh.map((o) => o.id));
+
+    if (newIds.length > 0) {
+      setGlowingIds((prev) => new Set([...prev, ...newIds]));
+      setTimeout(() => {
+        setGlowingIds((prev) => {
+          const next = new Set(prev);
+          newIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }, 60000);
+    }
+
+    setOrders(fresh);
     setItems((freshItems ?? []) as Item[]);
   }, [serviceNightId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -111,7 +128,7 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
               All caught up. 🎉
             </div>
           ) : (
-            <div style={{ background: "#fff", borderRadius: 18, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", border: `4px solid ${STATUS_COLOR[current.status]}` }}>
+            <div className={glowingIds.has(current.id) ? "order-new-glow" : undefined} style={{ background: "#fff", borderRadius: 18, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", border: `4px solid ${STATUS_COLOR[current.status]}` }}>
 
               {/* Status band */}
               <div style={{ background: STATUS_COLOR[current.status], color: "#fff", padding: "16px 26px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -174,7 +191,7 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
               <div style={{ color: "#F8EAD544", fontSize: 14, paddingLeft: 4 }}>Nothing waiting.</div>
             )}
             {upNext.map((o, idx) => (
-              <div key={o.id} style={{ background: "#F8EAD50d", border: "1px solid #F8EAD51a", borderRadius: 11, padding: "12px 14px" }}>
+              <div key={o.id} className={glowingIds.has(o.id) ? "order-new-glow" : undefined} style={{ background: "#F8EAD50d", border: "1px solid #F8EAD51a", borderRadius: 11, padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                   <span style={{ fontSize: 13, color: "#F8EAD599", fontWeight: 600 }}>#{idx + 2}</span>
                   <span className="font-display" style={{ fontWeight: 900, fontSize: 16, color: "#F8EAD5" }}>
