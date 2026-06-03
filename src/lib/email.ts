@@ -168,6 +168,83 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
   });
 }
 
+// ── Admin order notification ───────────────────────────────────────────────────
+
+export interface AdminOrderNotificationData {
+  code: string;
+  customerName: string;
+  customerPhone: string;
+  pickupAt: string;
+  totalCents: number;
+  items: { pizza_name: string; quantity: number }[];
+}
+
+export async function sendAdminOrderNotification(data: AdminOrderNotificationData) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail) return;
+
+  const { code, customerName, customerPhone, pickupAt, totalCents, items } = data;
+
+  const itemLines = items.map((i) => `${i.quantity}× ${i.pizza_name}`).join("<br />");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;padding:24px;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;border:1px solid #e0e0e0;">
+    <tr>
+      <td>
+        <p style="margin:0 0 4px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#999;">New order</p>
+        <h1 style="margin:0 0 20px;font-size:28px;font-weight:900;color:#484D52;">${code}</h1>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+          <tr>
+            <td style="font-size:13px;color:#999;text-transform:uppercase;letter-spacing:1px;padding-bottom:4px;">Customer</td>
+          </tr>
+          <tr>
+            <td style="font-size:16px;font-weight:700;color:#484D52;">${customerName}</td>
+          </tr>
+          <tr>
+            <td style="font-size:15px;color:#484D52;">${customerPhone}</td>
+          </tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+          <tr>
+            <td style="font-size:13px;color:#999;text-transform:uppercase;letter-spacing:1px;padding-bottom:4px;">Pickup</td>
+          </tr>
+          <tr>
+            <td style="font-size:16px;font-weight:700;color:#2F7D4F;">${formatPickup(pickupAt)}</td>
+          </tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+          <tr>
+            <td style="font-size:13px;color:#999;text-transform:uppercase;letter-spacing:1px;padding-bottom:4px;">Order</td>
+          </tr>
+          <tr>
+            <td style="font-size:15px;color:#484D52;line-height:1.6;">${itemLines}</td>
+          </tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #f0f0f0;padding-top:16px;">
+          <tr>
+            <td style="font-size:20px;font-weight:900;color:#484D52;">Total: ${fmt(totalCents)}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: adminEmail,
+    subject: `New order ${code} — ${items.map((i) => `${i.quantity}× ${i.pizza_name}`).join(", ")}`,
+    html,
+  });
+}
+
 // ── Reminder blast ─────────────────────────────────────────────────────────────
 
 export async function sendReminderBlast(emails: string[], fridayDate?: string): Promise<number> {

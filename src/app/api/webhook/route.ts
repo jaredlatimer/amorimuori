@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendConfirmationEmail } from "@/lib/email";
+import { sendConfirmationEmail, sendAdminOrderNotification } from "@/lib/email";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     // Find the order + items by stripe_payment_intent_id
     const { data: order } = await supabase
       .from("orders")
-      .select("id, code, customer_name, customer_email, pickup_at, subtotal_cents, tip_cents, total_cents, status")
+      .select("id, code, customer_name, customer_email, customer_phone, pickup_at, subtotal_cents, tip_cents, total_cents, status")
       .eq("stripe_payment_intent_id", pi.id)
       .single();
 
@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       code: string;
       customer_name: string;
       customer_email: string;
+      customer_phone: string;
       pickup_at: string;
       subtotal_cents: number;
       tip_cents: number;
@@ -75,7 +76,9 @@ export async function POST(request: Request) {
       .select("pizza_name, quantity, unit_price_cents")
       .eq("order_id", o.id);
 
-    // Send confirmation email
+    const typedItems = (items ?? []) as { pizza_name: string; quantity: number; unit_price_cents: number }[];
+
+    // Send confirmation email to customer
     try {
       await sendConfirmationEmail({
         to: o.customer_email,
@@ -85,15 +88,24 @@ export async function POST(request: Request) {
         subtotalCents: o.subtotal_cents,
         tipCents: o.tip_cents,
         totalCents: o.total_cents,
-        items: (items ?? []) as {
-          pizza_name: string;
-          quantity: number;
-          unit_price_cents: number;
-        }[],
+        items: typedItems,
       });
     } catch (emailErr) {
-      // Don't fail the webhook if email fails — order is already confirmed
       console.error("Confirmation email failed:", emailErr);
+    }
+
+    // Notify admin
+    try {
+      await sendAdminOrderNotification({
+        code: o.code,
+        customerName: o.customer_name,
+        customerPhone: o.customer_phone,
+        pickupAt: o.pickup_at,
+        totalCents: o.total_cents,
+        items: typedItems,
+      });
+    } catch (emailErr) {
+      console.error("Admin notification failed:", emailErr);
     }
   }
 
