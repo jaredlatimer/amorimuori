@@ -349,7 +349,7 @@ function OrderCard({
   };
 
   const actions = (
-    <div>
+    <div className="order-card-actions">
       {confirmAction === "cancel" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Cancel this order?</span>
