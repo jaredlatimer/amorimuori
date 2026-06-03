@@ -392,7 +392,7 @@ export function OrderForm({
                             marginTop: 9,
                           }}
                         >
-                          {pizza.allergens.map((a) => (
+                          {[...new Set(pizza.allergens.map((a) => a.toLowerCase()))].map((a) => (
                             <span
                               key={a}
                               style={{
