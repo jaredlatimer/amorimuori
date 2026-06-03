@@ -143,6 +143,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 700, fontSize: 15, color: "#F8EAD5" }}>{pizza.name}</span>
                     <span style={{ fontSize: 14, color: "#2F7D4F", fontWeight: 700 }}>${(pizza.price_cents / 100).toFixed(0)}</span>
+                    {pizza.is_special && <span style={{ fontSize: 11, fontWeight: 700, background: "#E8C24A", color: "#484D52", borderRadius: 100, padding: "2px 8px" }}>Special</span>}
                     {!pizza.is_active && <span style={{ fontSize: 11, fontWeight: 700, color: "#F8EAD544", border: "1px solid #F8EAD520", borderRadius: 100, padding: "2px 8px" }}>Hidden</span>}
                     <span style={{ fontSize: 12, color: "#F8EAD544" }}>Cap: {pizza.nightly_cap}</span>
                   </div>
