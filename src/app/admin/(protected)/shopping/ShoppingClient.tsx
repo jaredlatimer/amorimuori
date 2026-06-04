@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 interface Props {
   serviceNight: { id: string; service_date: string };
@@ -28,25 +29,35 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
   );
   const [extraInput, setExtraInput] = useState("");
 
-  // Sync state cross-device: poll every 15s + re-fetch on tab focus
+  // Realtime sync — instant cross-device updates
   useEffect(() => {
-    function sync() {
-      fetch(`/api/admin/shopping/state?serviceNightId=${serviceNight.id}`)
-        .then(r => r.json())
-        .then(data => {
-          setChecked(Object.fromEntries((data.checkedKeys as string[]).map(k => [k, true])));
-          setExtraItems(data.customItems as ExtraItem[]);
-        })
-        .catch(console.error);
-    }
-    const interval = setInterval(sync, 15_000);
-    document.addEventListener("visibilitychange", sync);
-    window.addEventListener("focus", sync);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", sync);
-      window.removeEventListener("focus", sync);
-    };
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`shopping-${serviceNight.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "shopping_items", filter: `service_night_id=eq.${serviceNight.id}` },
+        (payload) => {
+          if (payload.eventType === "UPDATE" || payload.eventType === "INSERT") {
+            const row = payload.new as { id: string; item_key: string; label: string; is_checked: boolean; is_custom: boolean };
+            setChecked(prev => ({ ...prev, [row.item_key]: row.is_checked }));
+            if (row.is_custom) {
+              setExtraItems(prev =>
+                prev.some(i => i.id === row.id)
+                  ? prev
+                  : [...prev, { id: row.id, itemKey: row.item_key, label: row.label }]
+              );
+            }
+          } else if (payload.eventType === "DELETE") {
+            const row = payload.old as { id: string; item_key: string };
+            setChecked(prev => { const { [row.item_key]: _, ...rest } = prev; return rest; });
+            setExtraItems(prev => prev.filter(i => i.id !== row.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [serviceNight.id]);
 
   function toggle(itemKey: string, label: string, isCustom = false) {
