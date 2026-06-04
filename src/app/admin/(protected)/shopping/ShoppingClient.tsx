@@ -9,6 +9,7 @@ interface Props {
 }
 
 type CheckedState = Record<string, boolean>;
+type ExtraItem = { id: string; label: string };
 
 function formatDate(dateStr: string) {
   return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
@@ -17,45 +18,70 @@ function formatDate(dateStr: string) {
 }
 
 export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props) {
-  const storageKey = `shopping-checked-${serviceNight.id}`;
+  const checkedKey = `shopping-checked-${serviceNight.id}`;
+  const extraKey = `shopping-extra-${serviceNight.id}`;
+
   const [checked, setChecked] = useState<CheckedState>({});
+  const [extraItems, setExtraItems] = useState<ExtraItem[]>([]);
+  const [extraInput, setExtraInput] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      try { setChecked(JSON.parse(stored)); } catch { /* ignore */ }
-    }
+    const stored = localStorage.getItem(checkedKey);
+    if (stored) { try { setChecked(JSON.parse(stored)); } catch { /* ignore */ } }
+    const storedExtra = localStorage.getItem(extraKey);
+    if (storedExtra) { try { setExtraItems(JSON.parse(storedExtra)); } catch { /* ignore */ } }
     setHydrated(true);
-  }, [storageKey]);
+  }, [checkedKey, extraKey]);
 
   function toggle(key: string) {
     setChecked(prev => {
       const next = { ...prev, [key]: !prev[key] };
-      localStorage.setItem(storageKey, JSON.stringify(next));
+      localStorage.setItem(checkedKey, JSON.stringify(next));
       return next;
+    });
+  }
+
+  function addExtra() {
+    const trimmed = extraInput.trim();
+    if (!trimmed) return;
+    const item: ExtraItem = { id: `extra-${Date.now()}`, label: trimmed };
+    setExtraItems(prev => {
+      const next = [...prev, item];
+      localStorage.setItem(extraKey, JSON.stringify(next));
+      return next;
+    });
+    setExtraInput("");
+  }
+
+  function removeExtra(id: string) {
+    setExtraItems(prev => {
+      const next = prev.filter(i => i.id !== id);
+      localStorage.setItem(extraKey, JSON.stringify(next));
+      return next;
+    });
+    setChecked(prev => {
+      const { [id]: _, ...rest } = prev;
+      localStorage.setItem(checkedKey, JSON.stringify(rest));
+      return rest;
     });
   }
 
   function reset() {
     setChecked({});
-    localStorage.removeItem(storageKey);
+    localStorage.removeItem(checkedKey);
   }
 
   if (!hydrated) return null;
 
   const DOUGH_KEY = "dough";
-  const allKeys = [DOUGH_KEY, ...ingredients.map(i => i.name)];
+  const allKeys = [DOUGH_KEY, ...ingredients.map(i => i.name), ...extraItems.map(i => i.id)];
   const checkedCount = allKeys.filter(k => checked[k]).length;
   const total = allKeys.length;
   const allDone = total > 0 && checkedCount === total;
 
   return (
-    <div style={{
-      padding: "28px 0 80px",
-      fontFamily: "var(--font-archivo), sans-serif",
-      maxWidth: 540,
-    }}>
+    <div style={{ padding: "28px 0 80px", fontFamily: "var(--font-archivo), sans-serif", maxWidth: 540 }}>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
@@ -102,7 +128,7 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props
       {ingredients.length > 0 && (
         <>
           <SectionHeader label="Ingredients" />
-          <div style={{ display: "grid", gap: 2 }}>
+          <div style={{ display: "grid", gap: 2, marginBottom: 28 }}>
             {ingredients.map(ing => (
               <Row
                 key={ing.name}
@@ -117,16 +143,57 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props
       )}
 
       {ingredients.length === 0 && totalPizzas === 0 && (
-        <p style={{ fontSize: 14, color: "#F8EAD533", marginTop: 20 }}>
+        <p style={{ fontSize: 14, color: "#F8EAD533", marginTop: 20, marginBottom: 28 }}>
           No orders yet for this service night.
         </p>
       )}
 
       {ingredients.length === 0 && totalPizzas > 0 && (
-        <p style={{ fontSize: 14, color: "#F8EAD533", marginTop: 20 }}>
+        <p style={{ fontSize: 14, color: "#F8EAD533", marginTop: 20, marginBottom: 28 }}>
           No ingredients added to pizzas yet — add them in Menu.
         </p>
       )}
+
+      {/* Other items */}
+      <SectionHeader label="Other" />
+      <div style={{ display: "grid", gap: 2, marginBottom: 10 }}>
+        {extraItems.map(item => (
+          <RowWithDelete
+            key={item.id}
+            label={item.label}
+            isChecked={!!checked[item.id]}
+            onToggle={() => toggle(item.id)}
+            onDelete={() => removeExtra(item.id)}
+          />
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          style={{
+            flex: 1, padding: "11px 14px", borderRadius: 10,
+            border: "1px solid #F8EAD520", background: "#484D52",
+            color: "#F8EAD5", fontSize: 15,
+            fontFamily: "var(--font-archivo), sans-serif", outline: "none",
+          }}
+          placeholder="Add item…"
+          value={extraInput}
+          onChange={e => setExtraInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") addExtra(); }}
+        />
+        <button
+          onClick={addExtra}
+          disabled={!extraInput.trim()}
+          style={{
+            background: extraInput.trim() ? "#2F7D4F" : "#484D52",
+            border: "none", color: "#F8EAD5", borderRadius: 10,
+            padding: "11px 18px", fontSize: 15, fontWeight: 700,
+            cursor: extraInput.trim() ? "pointer" : "default",
+            fontFamily: "var(--font-archivo), sans-serif", flexShrink: 0,
+          }}
+        >
+          Add
+        </button>
+      </div>
     </div>
   );
 }
@@ -172,9 +239,7 @@ function Row({ label, sub, isChecked, onToggle, large }: {
         )}
       </div>
       <span style={{
-        flex: 1,
-        fontSize: large ? 16 : 15,
-        fontWeight: large ? 700 : 400,
+        flex: 1, fontSize: large ? 16 : 15, fontWeight: large ? 700 : 400,
         color: isChecked ? "#F8EAD533" : "#F8EAD5",
         textDecoration: isChecked ? "line-through" : "none",
       }}>
@@ -191,5 +256,57 @@ function Row({ label, sub, isChecked, onToggle, large }: {
         {sub}
       </span>
     </button>
+  );
+}
+
+function RowWithDelete({ label, isChecked, onToggle, onDelete }: {
+  label: string; isChecked: boolean; onToggle: () => void; onDelete: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+      <button
+        onClick={onToggle}
+        style={{
+          flex: 1, display: "flex", alignItems: "center", gap: 14,
+          padding: "13px 14px",
+          background: isChecked ? "#F8EAD506" : "#484D52",
+          border: "1px solid #F8EAD510",
+          borderRadius: 10,
+          cursor: "pointer", textAlign: "left",
+          fontFamily: "var(--font-archivo), sans-serif",
+        }}
+      >
+        <div style={{
+          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+          border: isChecked ? "none" : "2px solid #F8EAD530",
+          background: isChecked ? "#2F7D4F" : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {isChecked && (
+            <svg width="13" height="10" viewBox="0 0 13 10" fill="none">
+              <path d="M1.5 5L5 8.5L11.5 1.5" stroke="#F8EAD5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+        <span style={{
+          flex: 1, fontSize: 15,
+          color: isChecked ? "#F8EAD533" : "#F8EAD5",
+          textDecoration: isChecked ? "line-through" : "none",
+        }}>
+          {label}
+        </span>
+      </button>
+      <button
+        onClick={onDelete}
+        style={{
+          background: "transparent", border: "none",
+          color: "#F8EAD533", cursor: "pointer",
+          padding: "0 10px", fontSize: 20, lineHeight: 1,
+          flexShrink: 0,
+        }}
+      >
+        ×
+      </button>
+    </div>
   );
 }
