@@ -6,7 +6,7 @@ export async function GET() {
 
   const { data: pizzas, error } = await supabase
     .from("pizzas")
-    .select("id, name, description, category, price_cents, nightly_cap, allergens, is_special, sort_order")
+    .select("id, name, description, category, price_cents, nightly_cap, allergens, is_special, sort_order, image_url")
     .eq("is_active", true)
     .order("category")
     .order("sort_order");

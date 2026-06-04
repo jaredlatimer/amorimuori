@@ -16,12 +16,14 @@ interface Pizza {
   is_active: boolean;
   is_special: boolean;
   sort_order: number;
+  image_url: string | null;
 }
 
 const BLANK: Omit<Pizza, "id"> = {
   name: "", description: "", category: "Pizze Rosse",
   price_cents: 0, nightly_cap: 20, allergens: [],
   is_active: true, is_special: false, sort_order: 0,
+  image_url: null,
 };
 
 const ALLERGEN_OPTIONS = ["Gluten", "Dairy", "Eggs", "Nuts", "Soy", "Shellfish", "Sesame"];
@@ -43,6 +45,8 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
   const [editing, setEditing] = useState<Pizza | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const grouped = CATEGORIES.map((cat) => ({
     category: cat,
@@ -53,38 +57,73 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
     const maxSort = Math.max(0, ...pizzas.map((p) => p.sort_order));
     setEditing({ id: "", ...BLANK, sort_order: maxSort + 10 });
     setIsNew(true);
+    setPendingImage(null);
+    setUploadError(null);
   }
 
   function openEdit(pizza: Pizza) {
     setEditing({ ...pizza });
     setIsNew(false);
+    setPendingImage(null);
+    setUploadError(null);
+  }
+
+  async function uploadImage(file: File, pizzaId: string): Promise<string> {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const path = `${pizzaId}.${ext}`;
+    const { error } = await supabase.storage
+      .from("pizza-images")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) throw new Error(error.message);
+    const { data: { publicUrl } } = supabase.storage.from("pizza-images").getPublicUrl(path);
+    return publicUrl;
   }
 
   async function save() {
     if (!editing) return;
     setSaving(true);
+    setUploadError(null);
 
-    if (isNew) {
-      const { data } = await supabase.from("pizzas").insert({
-        name: editing.name, description: editing.description,
-        category: editing.category, price_cents: editing.price_cents,
-        nightly_cap: editing.nightly_cap, allergens: editing.allergens,
-        is_active: editing.is_active, is_special: editing.is_special,
-        sort_order: editing.sort_order,
-      }).select().single();
-      if (data) setPizzas((prev) => [...prev, data as Pizza]);
-    } else {
-      await supabase.from("pizzas").update({
-        name: editing.name, description: editing.description,
-        category: editing.category, price_cents: editing.price_cents,
-        nightly_cap: editing.nightly_cap, allergens: editing.allergens,
-        is_active: editing.is_active, is_special: editing.is_special,
-        sort_order: editing.sort_order,
-      }).eq("id", editing.id);
-      setPizzas((prev) => prev.map((p) => p.id === editing.id ? { ...editing } : p));
+    try {
+      if (isNew) {
+        const { data } = await supabase.from("pizzas").insert({
+          name: editing.name, description: editing.description,
+          category: editing.category, price_cents: editing.price_cents,
+          nightly_cap: editing.nightly_cap, allergens: editing.allergens,
+          is_active: editing.is_active, is_special: editing.is_special,
+          sort_order: editing.sort_order, image_url: null,
+        }).select().single();
+
+        if (data) {
+          let imageUrl: string | null = null;
+          if (pendingImage) {
+            imageUrl = await uploadImage(pendingImage, data.id);
+            await supabase.from("pizzas").update({ image_url: imageUrl }).eq("id", data.id);
+          }
+          setPizzas((prev) => [...prev, { ...data, image_url: imageUrl } as Pizza]);
+        }
+      } else {
+        let imageUrl = editing.image_url;
+        if (pendingImage) {
+          imageUrl = await uploadImage(pendingImage, editing.id);
+        }
+        await supabase.from("pizzas").update({
+          name: editing.name, description: editing.description,
+          category: editing.category, price_cents: editing.price_cents,
+          nightly_cap: editing.nightly_cap, allergens: editing.allergens,
+          is_active: editing.is_active, is_special: editing.is_special,
+          sort_order: editing.sort_order, image_url: imageUrl,
+        }).eq("id", editing.id);
+        setPizzas((prev) => prev.map((p) => p.id === editing.id ? { ...editing, image_url: imageUrl } : p));
+      }
+
+      setEditing(null);
+      setPendingImage(null);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setEditing(null);
   }
 
   async function toggleActive(pizza: Pizza) {
@@ -114,6 +153,10 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
     }));
   }
 
+  const previewSrc = pendingImage
+    ? URL.createObjectURL(pendingImage)
+    : editing?.image_url ?? null;
+
   return (
     <div style={{ paddingTop: 32, maxWidth: 800 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
@@ -137,6 +180,14 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
                   <button onClick={() => moveSort(pizza, -1)} disabled={idx === 0} style={{ background: "transparent", border: "none", color: idx === 0 ? "#F8EAD522" : "#F8EAD555", cursor: idx === 0 ? "default" : "pointer", fontSize: 12, padding: "1px 4px" }}>▲</button>
                   <button onClick={() => moveSort(pizza, 1)} disabled={idx === items.length - 1} style={{ background: "transparent", border: "none", color: idx === items.length - 1 ? "#F8EAD522" : "#F8EAD555", cursor: idx === items.length - 1 ? "default" : "pointer", fontSize: 12, padding: "1px 4px" }}>▼</button>
                 </div>
+
+                {/* Thumbnail */}
+                {pizza.image_url && (
+                  <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#3A3E43" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={pizza.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                )}
 
                 {/* Info + actions */}
                 <div style={{ flex: 1, minWidth: 0, paddingRight: 28 }}>
@@ -239,10 +290,33 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
                   </label>
                 ))}
               </div>
+
+              {/* Image upload */}
+              <div>
+                <label style={labelStyle}>Pizza image</label>
+                {previewSrc && (
+                  <div style={{ marginBottom: 10, borderRadius: 10, overflow: "hidden", height: 130, position: "relative", background: "#484D52" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }} />
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setPendingImage(file);
+                  }}
+                  style={{ ...inputStyle, padding: "8px 12px", cursor: "pointer" }}
+                />
+                {uploadError && (
+                  <p style={{ fontSize: 12, color: "#E05555", marginTop: 6 }}>{uploadError}</p>
+                )}
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
-              <button onClick={() => setEditing(null)} style={{ flex: 1, background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD566", borderRadius: 10, padding: "12px", fontSize: 14, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>Cancel</button>
+              <button onClick={() => { setEditing(null); setPendingImage(null); }} style={{ flex: 1, background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD566", borderRadius: 10, padding: "12px", fontSize: 14, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>Cancel</button>
               <button onClick={save} disabled={saving || !editing.name} style={{ flex: 2, background: saving || !editing.name ? "#2F7D4F55" : "#2F7D4F", border: "none", color: "#F8EAD5", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700, cursor: saving || !editing.name ? "not-allowed" : "pointer", fontFamily: "var(--font-archivo), sans-serif" }}>
                 {saving ? "Saving…" : isNew ? "Add pizza" : "Save changes"}
               </button>

@@ -292,16 +292,37 @@ export function OrderForm({
                         : "#3A3E4380",
                       border: `1px solid ${itemQty ? "#2F7D4F" : "#F8EAD51a"}`,
                       borderRadius: 16,
-                      padding: "18px 20px",
                       display: "flex",
                       justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 16,
+                      alignItems: pizza.image_url ? "stretch" : "center",
+                      gap: pizza.image_url ? 0 : 16,
                       opacity: soldOut && itemQty === 0 ? 0.55 : 1,
+                      overflow: "hidden",
+                      padding: pizza.image_url ? 0 : "18px 20px",
                     }}
                   >
+                    {/* Image column */}
+                    {pizza.image_url && (
+                      <div style={{ width: 130, flexShrink: 0, position: "relative", overflow: "hidden" }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={pizza.image_url}
+                          alt=""
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            bottom: 0,
+                            height: "100%",
+                            width: "auto",
+                            maxWidth: "none",
+                            right: -10,
+                          }}
+                        />
+                      </div>
+                    )}
+
                     {/* Pizza info */}
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, ...(pizza.image_url ? { padding: "16px 8px 16px 4px" } : {}) }}>
                       <div
                         style={{
                           display: "flex",
@@ -418,6 +439,7 @@ export function OrderForm({
                         display: "flex",
                         alignItems: "center",
                         gap: 12,
+                        ...(pizza.image_url ? { padding: "16px 18px 16px 8px" } : {}),
                       }}
                     >
                       {itemQty > 0 && (

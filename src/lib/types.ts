@@ -22,6 +22,7 @@ export interface Pizza {
   is_active: boolean;
   is_special: boolean;
   sort_order: number;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
 }
