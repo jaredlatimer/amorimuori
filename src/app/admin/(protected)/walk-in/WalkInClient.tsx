@@ -1,0 +1,293 @@
+"use client";
+
+import { useState } from "react";
+
+interface Pizza {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  price_cents: number;
+  allergens: string[];
+  is_special: boolean;
+  image_url: string | null;
+}
+
+interface Props {
+  serviceNight: { id: string; service_date: string; nightly_total: number };
+  pizzas: Pizza[];
+  availability: Record<string, { remaining: number; soldOut: boolean }>;
+  poolRemaining: number;
+}
+
+const inputStyle: React.CSSProperties = {
+  padding: "11px 14px",
+  borderRadius: 10,
+  border: "1px solid #F8EAD520",
+  background: "#3A3E43",
+  color: "#F8EAD5",
+  fontSize: 15,
+  fontFamily: "var(--font-archivo), sans-serif",
+  outline: "none",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+function fmt(cents: number) {
+  return `$${(cents / 100).toFixed(0)}`;
+}
+
+function formatPickup(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+  });
+}
+
+function formatDate(dateStr: string) {
+  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric",
+  });
+}
+
+export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining }: Props) {
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ code: string; pickup_at: string; total_cents: number } | null>(null);
+
+  const categories = [...new Set(pizzas.map(p => p.category))];
+  const totalPizzas = Object.values(qty).reduce((s, q) => s + q, 0);
+  const effectivePool = Math.max(0, poolRemaining - totalPizzas);
+
+  const subtotal = pizzas.reduce((s, p) => s + p.price_cents * (qty[p.id] ?? 0), 0);
+  const canSubmit = totalPizzas > 0 && name.trim().length > 0 && phone.trim().length > 0 && !submitting;
+
+  function adjust(id: string, delta: number) {
+    const avail = availability[id];
+    setQty(prev => {
+      const current = prev[id] ?? 0;
+      const capRemaining = avail?.remaining ?? 0;
+      const othersInCart = Object.entries(prev).reduce((s, [k, v]) => s + (k === id ? 0 : v), 0);
+      const poolLeft = Math.max(0, poolRemaining - othersInCart);
+      const max = Math.min(capRemaining, poolLeft);
+      const next = delta > 0 ? Math.min(max, current + 1) : Math.max(0, current - 1);
+      if (next === 0) {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [id]: next };
+    });
+  }
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/walk-in-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceNightId: serviceNight.id,
+          quantities: qty,
+          name, phone, email: email || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to place order");
+      setResult(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function reset() {
+    setQty({});
+    setName(""); setPhone(""); setEmail("");
+    setResult(null); setError(null);
+  }
+
+  if (result) {
+    return (
+      <div style={{ paddingTop: 40, maxWidth: 480 }}>
+        <div style={{ background: "#2F7D4F22", border: "1px solid #2F7D4F55", borderRadius: 20, padding: "36px 28px", textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>✓</div>
+          <h2 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 6px", color: "#F8EAD5" }}>
+            Order placed
+          </h2>
+          <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: "#2F7D4F", margin: "12px 0 4px", fontFamily: "var(--font-fraunces), serif" }}>
+            #{result.code}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#F8EAD5cc", marginBottom: 4 }}>
+            Pickup at {formatPickup(result.pickup_at)}
+          </div>
+          <div style={{ fontSize: 15, color: "#F8EAD566", marginBottom: 28 }}>
+            {fmt(result.total_cents)} · {name}
+          </div>
+          <button
+            onClick={reset}
+            style={{ background: "#2F7D4F", border: "none", color: "#F8EAD5", borderRadius: 12, padding: "13px 32px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
+          >
+            New order
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingTop: 32, maxWidth: 600 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 24 }}>
+        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: 0 }}>Walk-in</h1>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "#F8EAD577", background: "#484D52", border: "1px solid #F8EAD515", borderRadius: 100, padding: "4px 12px" }}>
+            {formatDate(serviceNight.service_date)}
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: poolRemaining <= 10 ? "#C9A227" : "#2F7D4F", background: "#484D52", border: "1px solid #F8EAD515", borderRadius: 100, padding: "4px 12px" }}>
+            {poolRemaining} left
+          </span>
+        </div>
+      </div>
+
+      {/* Pizza list */}
+      {categories.map(cat => (
+        <div key={cat} style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.4, textTransform: "uppercase", color: "#2F7D4F", marginBottom: 10 }}>
+            {cat}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {pizzas.filter(p => p.category === cat).map(pizza => {
+              const avail = availability[pizza.id];
+              const itemQty = qty[pizza.id] ?? 0;
+              const soldOut = avail?.soldOut || avail?.remaining === 0;
+              const canAdd = !soldOut && effectivePool > 0 && (avail?.remaining ?? 0) > itemQty;
+
+              return (
+                <div
+                  key={pizza.id}
+                  style={{
+                    background: itemQty ? "#2F7D4F18" : "#484D52",
+                    border: `1px solid ${itemQty ? "#2F7D4F55" : "#F8EAD510"}`,
+                    borderRadius: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 16px",
+                    opacity: soldOut && !itemQty ? 0.45 : 1,
+                  }}
+                >
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: "#F8EAD5" }}>{pizza.name}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: "#2F7D4F" }}>{fmt(pizza.price_cents)}</span>
+                      {pizza.is_special && (
+                        <span style={{ fontSize: 11, fontWeight: 700, background: "#E8C24A", color: "#484D52", borderRadius: 100, padding: "1px 7px" }}>Special</span>
+                      )}
+                      {soldOut ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#F8EAD5", background: "#60403F", borderRadius: 100, padding: "1px 7px" }}>Sold out</span>
+                      ) : avail && avail.remaining <= 5 && avail.remaining > 0 ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#C9A227" }}>{avail.remaining} left</span>
+                      ) : null}
+                    </div>
+                    {pizza.description && (
+                      <div style={{ fontSize: 13, color: "#F8EAD555", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {pizza.description}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Qty controls */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    {itemQty > 0 && (
+                      <button
+                        onClick={() => adjust(pizza.id, -1)}
+                        style={{ width: 32, height: 32, borderRadius: "50%", background: "#3A3E43", border: "1px solid #F8EAD520", color: "#F8EAD5", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
+                      >−</button>
+                    )}
+                    {itemQty > 0 && (
+                      <span style={{ minWidth: 16, textAlign: "center", fontWeight: 700, fontSize: 16, color: "#F8EAD5" }}>{itemQty}</span>
+                    )}
+                    <button
+                      onClick={() => adjust(pizza.id, 1)}
+                      disabled={!canAdd}
+                      style={{ width: 32, height: 32, borderRadius: "50%", background: canAdd ? "#2F7D4F" : "#3A3E43", border: canAdd ? "none" : "1px solid #F8EAD520", color: "#F8EAD5", fontSize: 20, cursor: canAdd ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, opacity: canAdd ? 1 : 0.35 }}
+                    >+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Divider + customer fields */}
+      {totalPizzas > 0 && (
+        <>
+          <div style={{ borderTop: "1px solid #F8EAD510", margin: "8px 0 20px" }} />
+
+          {/* Subtotal */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <span style={{ fontSize: 14, color: "#F8EAD566" }}>
+              {totalPizzas} pizza{totalPizzas !== 1 ? "s" : ""} · soonest slot auto-assigned
+            </span>
+            <span style={{ fontSize: 17, fontWeight: 900, color: "#F8EAD5", fontFamily: "var(--font-fraunces), serif" }}>
+              {fmt(subtotal)}
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+            <input
+              style={inputStyle}
+              placeholder="Customer name *"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+            <input
+              style={inputStyle}
+              placeholder="Mobile number *"
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+            />
+            <input
+              style={inputStyle}
+              placeholder="Email (optional)"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+
+          {error && (
+            <p style={{ fontSize: 13, color: "#E05555", marginBottom: 12 }}>{error}</p>
+          )}
+
+          <button
+            onClick={submit}
+            disabled={!canSubmit}
+            style={{
+              width: "100%",
+              background: canSubmit ? "#2F7D4F" : "#2F7D4F44",
+              border: "none",
+              color: "#F8EAD5",
+              borderRadius: 12,
+              padding: "15px",
+              fontSize: 16,
+              fontWeight: 700,
+              cursor: canSubmit ? "pointer" : "not-allowed",
+              fontFamily: "var(--font-archivo), sans-serif",
+            }}
+          >
+            {submitting ? "Placing order…" : `Place order · ${fmt(subtotal)}`}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}

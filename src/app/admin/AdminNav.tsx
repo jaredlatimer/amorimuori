@@ -19,6 +19,7 @@ export function AdminNav() {
   const tabs = [
     { label: "Orders", href: "/admin/orders" },
     { label: "Kitchen", href: "/admin/kitchen" },
+    { label: "Walk-in", href: "/admin/walk-in" },
     { label: "Inventory", href: "/admin/inventory" },
     { label: "Menu", href: "/admin/menu" },
     { label: "Dashboard", href: "/admin/dashboard" },
