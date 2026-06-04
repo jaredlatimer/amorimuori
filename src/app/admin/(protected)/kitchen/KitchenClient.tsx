@@ -223,7 +223,7 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
                     {STATUS_LABEL[current.status]}
                   </div>
                   <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 17, marginTop: 2 }}>
-                    {current.code} · {current.customer_name}
+                    {current.customer_name} · {current.code}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
