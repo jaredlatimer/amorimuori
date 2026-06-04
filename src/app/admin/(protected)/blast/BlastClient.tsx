@@ -58,6 +58,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [sentCount, setSentCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const currentRecipients = currentNight?.recipients ?? [];
   const recipientCount = audience === "current_orders" ? currentRecipients.length : pastRecipients.length;
@@ -67,6 +68,24 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const formattedEventDate = eventDate
     ? new Date(eventDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
     : null;
+
+  async function sendTest() {
+    setTestState("sending");
+    try {
+      const res = await fetch("/api/admin/send-blast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, body, audience, test: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Unknown error");
+      setTestState("sent");
+      setTimeout(() => setTestState("idle"), 4000);
+    } catch {
+      setTestState("error");
+      setTimeout(() => setTestState("idle"), 4000);
+    }
+  }
 
   async function send() {
     setStep("sending");
@@ -243,6 +262,18 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
             >
               Send to {recipientCount} {audience === "current_orders" ? "customer" : "people"}{recipientCount !== 1 ? "s" : ""} →
             </button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={sendTest}
+              disabled={!canSend || testState === "sending"}
+              style={{ background: "transparent", border: "1px solid #F8EAD520", color: canSend ? "#F8EAD5aa" : "#F8EAD533", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: canSend && testState !== "sending" ? "pointer" : "not-allowed", fontFamily: "var(--font-archivo), sans-serif" }}
+            >
+              {testState === "sending" ? "Sending…" : "Send test to me"}
+            </button>
+            {testState === "sent" && <span style={{ fontSize: 13, color: "#2F7D4F" }}>Sent to jared@latimerart.design</span>}
+            {testState === "error" && <span style={{ fontSize: 13, color: "#E05555" }}>Failed — check console</span>}
           </div>
         </div>
       )}

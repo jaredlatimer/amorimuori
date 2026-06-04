@@ -34,6 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing subject or body" }, { status: 400 });
   }
 
+  const TEST_EMAIL = "jared@latimerart.design";
   const service = await createServiceClient();
   const { data: unsubs } = await service.from("email_unsubscribes").select("email");
   const unsubSet = new Set((unsubs ?? []).map((u: { email: string }) => u.email.toLowerCase()));
@@ -60,9 +61,23 @@ export async function POST(request: Request) {
       .order("pickup_at", { ascending: true });
 
     type Row = { customer_name: string; customer_email: string; code: string; pickup_at: string };
-    const recipients = ((currentOrders ?? []) as Row[])
-      .filter((o) => !!o.customer_email?.trim() && !unsubSet.has(o.customer_email.toLowerCase()))
-      .map((o) => ({ email: o.customer_email, name: o.customer_name, code: o.code, pickupAt: o.pickup_at }));
+    const allRows = ((currentOrders ?? []) as Row[]).filter((o) => !!o.customer_email?.trim() && !unsubSet.has(o.customer_email.toLowerCase()));
+    const firstRow = allRows[0];
+
+    if (body.test) {
+      const testRecipient = firstRow
+        ? { email: TEST_EMAIL, name: firstRow.customer_name, code: firstRow.code, pickupAt: firstRow.pickup_at }
+        : { email: TEST_EMAIL, name: "Test Customer", code: "TEST01", pickupAt: new Date().toISOString() };
+      try {
+        await sendOrderBlast({ recipients: [testRecipient], subject: body.subject, message: body.body });
+        return NextResponse.json({ sent: 1 });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
+    }
+
+    const recipients = allRows.map((o) => ({ email: o.customer_email, name: o.customer_name, code: o.code, pickupAt: o.pickup_at }));
 
     try {
       const sent = await sendOrderBlast({ recipients, subject: body.subject, message: body.body });
@@ -75,6 +90,16 @@ export async function POST(request: Request) {
   }
 
   // Past customers — generic blast
+  if (body.test) {
+    try {
+      await sendBlast({ emails: [TEST_EMAIL], subject: body.subject, body: body.body, eventDate: body.eventDate ?? undefined });
+      return NextResponse.json({ sent: 1 });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
   const { data: orders } = await service.from("orders").select("customer_email").eq("status", "picked_up");
   const emails = [
     ...new Set(
