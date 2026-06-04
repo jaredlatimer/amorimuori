@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -15,16 +15,17 @@ export async function POST(request: Request) {
   }
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-  const path = `${pizzaId}.${ext}`;
+  // Use pizzaId with underscores (no hyphens) + extension — avoids UUID hyphen path issues
+  const safeName = pizzaId.replace(/-/g, "_");
+  const path = `${safeName}.${ext}`;
   const contentType = file.type || "image/jpeg";
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
   const bytes = await file.arrayBuffer();
 
   const uploadUrl = `${supabaseUrl}/storage/v1/object/pizza-images/${path}`;
-  console.log("Uploading:", { uploadUrl, contentType, size: bytes.byteLength });
+  console.log("Uploading:", { path, contentType, size: bytes.byteLength });
 
   const uploadRes = await fetch(uploadUrl, {
     method: "POST",
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   });
 
   const rawText = await uploadRes.text();
-  console.log("Supabase storage response:", uploadRes.status, rawText);
+  console.log("Storage response:", uploadRes.status, rawText);
 
   if (!uploadRes.ok) {
     return NextResponse.json(
@@ -46,6 +47,14 @@ export async function POST(request: Request) {
     );
   }
 
+  // Also update the pizzas row so image_url is always in sync
   const publicUrl = `${supabaseUrl}/storage/v1/object/public/pizza-images/${path}`;
+  const service = await createServiceClient();
+  const { error: dbErr } = await service
+    .from("pizzas")
+    .update({ image_url: publicUrl })
+    .eq("id", pizzaId);
+  if (dbErr) console.error("DB update error:", dbErr);
+
   return NextResponse.json({ publicUrl });
 }
