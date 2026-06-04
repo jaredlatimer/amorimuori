@@ -58,34 +58,16 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [sentCount, setSentCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
-  const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [isTest, setIsTest] = useState(false);
 
   const currentRecipients = currentNight?.recipients ?? [];
   const recipientCount = audience === "current_orders" ? currentRecipients.length : pastRecipients.length;
-  const canSend = subject.trim().length > 0 && body.trim().length > 0 && recipientCount > 0;
+  const canSend = subject.trim().length > 0 && body.trim().length > 0 && (isTest || recipientCount > 0);
 
   const previewRecipient = currentRecipients[0];
   const formattedEventDate = eventDate
     ? new Date(eventDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
     : null;
-
-  async function sendTest() {
-    setTestState("sending");
-    try {
-      const res = await fetch("/api/admin/send-blast", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, body, audience, test: true }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Unknown error");
-      setTestState("sent");
-      setTimeout(() => setTestState("idle"), 4000);
-    } catch {
-      setTestState("error");
-      setTimeout(() => setTestState("idle"), 4000);
-    }
-  }
 
   async function send() {
     setStep("sending");
@@ -98,6 +80,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
           subject,
           body,
           audience,
+          test: isTest || undefined,
           eventDate: audience === "past" ? (eventDate || undefined) : undefined,
         }),
       });
@@ -116,15 +99,17 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
       <div style={{ paddingTop: 32, maxWidth: 600 }}>
         <div style={{ background: "#2F7D4F22", border: "1px solid #2F7D4F44", borderRadius: 16, padding: "32px 28px", textAlign: "center" }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
-          <h2 className="font-display" style={{ fontSize: 24, fontWeight: 900, margin: "0 0 8px", color: "#F8EAD5" }}>Blast sent</h2>
+          <h2 className="font-display" style={{ fontSize: 24, fontWeight: 900, margin: "0 0 8px", color: "#F8EAD5" }}>
+            {isTest ? "Test sent" : "Blast sent"}
+          </h2>
           <p style={{ fontSize: 15, color: "#F8EAD5aa", margin: "0 0 24px" }}>
-            Delivered to {sentCount} customer{sentCount !== 1 ? "s" : ""}.
+            {isTest ? "Delivered to jared@latimerart.design." : `Delivered to ${sentCount} customer${sentCount !== 1 ? "s" : ""}.`}
           </p>
           <button
             onClick={() => { setSubject(""); setBody(""); setEventDate(""); setStep("compose"); }}
             style={{ background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD5aa", borderRadius: 10, padding: "10px 22px", fontSize: 14, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
           >
-            Send another
+            {isTest ? "Try another" : "Send another"}
           </button>
         </div>
       </div>
@@ -135,7 +120,41 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
     <div style={{ paddingTop: 32, maxWidth: 600 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: 0 }}>Blast</h1>
+        <div style={{ display: "flex", background: "#3A3E43", borderRadius: 10, padding: 3, gap: 2 }}>
+          {([
+            { value: false, label: "Live" },
+            { value: true, label: "Send Test" },
+          ] as const).map(({ value, label }) => {
+            const active = isTest === value;
+            return (
+              <button
+                key={String(value)}
+                onClick={() => setIsTest(value)}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: active ? (value ? "#C9A227" : "#484D52") : "transparent",
+                  color: active ? (value ? "#22252a" : "#F8EAD5") : "#F8EAD555",
+                  fontSize: 13, fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-archivo), sans-serif",
+                  transition: "background 0.15s",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {isTest && (
+        <div style={{ marginBottom: 24, background: "#C9A22718", border: "1px solid #C9A22744", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, color: "#C9A227", fontWeight: 700 }}>Test mode</span>
+          <span style={{ fontSize: 13, color: "#F8EAD5aa" }}>Sending only to Jared Latimer · jared@latimerart.design</span>
+        </div>
+      )}
 
       {/* Audience toggle */}
       <div style={{ marginBottom: 24 }}>
@@ -175,7 +194,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
       </div>
 
       {/* Recipient list */}
-      {audience === "current_orders" && currentNight && (
+      {!isTest && audience === "current_orders" && currentNight && (
         <div style={{ marginBottom: 24, background: "#3A3E43", borderRadius: 12, padding: "14px 16px" }}>
           <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#F8EAD555", letterSpacing: 0.8, textTransform: "uppercase" }}>
             {formatDate(currentNight.serviceDate)} · {currentRecipients.length} with email
@@ -195,7 +214,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
         </div>
       )}
 
-      {audience === "past" && pastRecipients.length > 0 && (
+      {!isTest && audience === "past" && pastRecipients.length > 0 && (
         <div style={{ marginBottom: 24, background: "#3A3E43", borderRadius: 12, padding: "14px 16px" }}>
           <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#F8EAD555", letterSpacing: 0.8, textTransform: "uppercase" }}>Recipients</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -260,20 +279,10 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
               disabled={!canSend}
               style={{ flex: "2 1 200px", background: canSend ? "#2F7D4F" : "#2F7D4F44", border: "none", color: "#F8EAD5", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700, cursor: canSend ? "pointer" : "not-allowed", fontFamily: "var(--font-archivo), sans-serif" }}
             >
-              Send to {recipientCount} {audience === "current_orders" ? "customer" : "people"}{recipientCount !== 1 ? "s" : ""} →
+              {isTest
+                ? "Send test →"
+                : `Send to ${recipientCount} ${audience === "current_orders" ? "customer" : "people"}${recipientCount !== 1 ? "s" : ""} →`}
             </button>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              onClick={sendTest}
-              disabled={!canSend || testState === "sending"}
-              style={{ background: "transparent", border: "1px solid #F8EAD520", color: canSend ? "#F8EAD5aa" : "#F8EAD533", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: canSend && testState !== "sending" ? "pointer" : "not-allowed", fontFamily: "var(--font-archivo), sans-serif" }}
-            >
-              {testState === "sending" ? "Sending…" : "Send test to me"}
-            </button>
-            {testState === "sent" && <span style={{ fontSize: 13, color: "#2F7D4F" }}>Sent to jared@latimerart.design</span>}
-            {testState === "error" && <span style={{ fontSize: 13, color: "#E05555" }}>Failed — check console</span>}
           </div>
         </div>
       )}
@@ -285,10 +294,12 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
             <strong style={{ color: "#F8EAD5" }}>{subject}</strong>
           </p>
           <p style={{ fontSize: 13, color: "#F8EAD566", margin: "0 0 24px", lineHeight: 1.5 }}>
-            {audience === "current_orders"
-              ? <>This will send a <strong style={{ color: "#F8EAD5" }}>personalized email</strong> to <strong style={{ color: "#F8EAD5" }}>{recipientCount} customer{recipientCount !== 1 ? "s" : ""}</strong> with their specific pickup time.</>
-              : <>This will email <strong style={{ color: "#F8EAD5" }}>{recipientCount} past customers</strong>.</>
-            } This can&rsquo;t be undone.
+            {isTest
+              ? <>This is a <strong style={{ color: "#C9A227" }}>test</strong> — sending only to <strong style={{ color: "#F8EAD5" }}>jared@latimerart.design</strong>. No real customers will receive this.</>
+              : audience === "current_orders"
+                ? <>This will send a <strong style={{ color: "#F8EAD5" }}>personalized email</strong> to <strong style={{ color: "#F8EAD5" }}>{recipientCount} customer{recipientCount !== 1 ? "s" : ""}</strong> with their specific pickup time. This can&rsquo;t be undone.</>
+                : <>This will email <strong style={{ color: "#F8EAD5" }}>{recipientCount} past customers</strong>. This can&rsquo;t be undone.</>
+            }
           </p>
           {error && <p style={{ fontSize: 13, color: "#E05555", marginBottom: 16 }}>{error}</p>}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
