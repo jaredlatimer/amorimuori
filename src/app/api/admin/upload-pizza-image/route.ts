@@ -21,23 +21,29 @@ export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  const uploadRes = await fetch(
-    `${supabaseUrl}/storage/v1/object/pizza-images/${path}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": contentType,
-        "x-upsert": "true",
-      },
-      body: file,
-    }
-  );
+  const bytes = await file.arrayBuffer();
+
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/pizza-images/${path}`;
+  console.log("Uploading:", { uploadUrl, contentType, size: bytes.byteLength });
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": contentType,
+      "x-upsert": "true",
+    },
+    body: Buffer.from(bytes),
+  });
+
+  const rawText = await uploadRes.text();
+  console.log("Supabase storage response:", uploadRes.status, rawText);
 
   if (!uploadRes.ok) {
-    const errJson = await uploadRes.json().catch(() => ({}));
-    console.error("Storage upload error:", uploadRes.status, errJson);
-    return NextResponse.json({ error: errJson.message ?? "Upload failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: `Storage ${uploadRes.status}: ${rawText}` },
+      { status: 500 }
+    );
   }
 
   const publicUrl = `${supabaseUrl}/storage/v1/object/public/pizza-images/${path}`;
