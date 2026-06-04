@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -16,17 +16,30 @@ export async function POST(request: Request) {
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
   const path = `${pizzaId}.${ext}`;
+  const contentType = file.type || "image/jpeg";
 
-  const service = await createServiceClient();
-  const { error } = await service.storage
-    .from("pizza-images")
-    .upload(path, file, { upsert: true, contentType: file.type });
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  if (error) {
-    console.error("Storage upload error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const uploadRes = await fetch(
+    `${supabaseUrl}/storage/v1/object/pizza-images/${path}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        "Content-Type": contentType,
+        "x-upsert": "true",
+      },
+      body: file,
+    }
+  );
+
+  if (!uploadRes.ok) {
+    const errJson = await uploadRes.json().catch(() => ({}));
+    console.error("Storage upload error:", uploadRes.status, errJson);
+    return NextResponse.json({ error: errJson.message ?? "Upload failed" }, { status: 500 });
   }
 
-  const { data: { publicUrl } } = service.storage.from("pizza-images").getPublicUrl(path);
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/pizza-images/${path}`;
   return NextResponse.json({ publicUrl });
 }
