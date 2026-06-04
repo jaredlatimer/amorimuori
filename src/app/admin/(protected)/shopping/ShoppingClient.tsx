@@ -21,6 +21,7 @@ function formatDate(dateStr: string) {
 }
 
 export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initialCheckedKeys, initialCustomItems }: Props) {
+  const supabase = createClient();
   const [checked, setChecked] = useState<CheckedState>(() =>
     Object.fromEntries(initialCheckedKeys.map(k => [k, true]))
   );
@@ -31,8 +32,6 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
 
   // Realtime sync — instant cross-device updates
   useEffect(() => {
-    const supabase = createClient();
-
     async function refetch() {
       const res = await fetch(`/api/admin/shopping/state?serviceNightId=${serviceNight.id}`);
       const data = await res.json();
