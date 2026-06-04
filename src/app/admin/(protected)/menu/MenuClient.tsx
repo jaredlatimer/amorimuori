@@ -49,6 +49,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [ingInput, setIngInput] = useState("");
+  const [ingSuggIdx, setIngSuggIdx] = useState(-1);
 
   const grouped = CATEGORIES.map((cat) => ({
     category: cat,
@@ -62,6 +63,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
     setPendingImage(null);
     setUploadError(null);
     setIngInput("");
+    setIngSuggIdx(-1);
   }
 
   function openEdit(pizza: Pizza) {
@@ -70,14 +72,20 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
     setPendingImage(null);
     setUploadError(null);
     setIngInput("");
+    setIngSuggIdx(-1);
   }
 
-  function commitIngInput() {
-    const trimmed = ingInput.trim();
+  function addIngredient(val: string) {
+    const trimmed = val.trim();
     if (trimmed && editing && !editing.ingredients.includes(trimmed)) {
       setEditing(p => p && ({ ...p, ingredients: [...p.ingredients, trimmed] }));
     }
     setIngInput("");
+    setIngSuggIdx(-1);
+  }
+
+  function commitIngInput() {
+    addIngredient(ingInput);
   }
 
   function compressImage(file: File, maxWidth = 900): Promise<Blob> {
@@ -342,19 +350,46 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
                     ))}
                   </div>
                 )}
-                <input
-                  style={inputStyle}
-                  placeholder="Add ingredient, press Enter"
-                  value={ingInput}
-                  onChange={e => setIngInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" || e.key === ",") {
-                      e.preventDefault();
-                      commitIngInput();
-                    }
-                  }}
-                  onBlur={commitIngInput}
-                />
+                {(() => {
+                  const allKnown = Array.from(new Set(pizzas.flatMap(p => p.ingredients))).sort();
+                  const suggestions = ingInput.length > 0
+                    ? allKnown.filter(s => s.toLowerCase().includes(ingInput.toLowerCase()) && !editing.ingredients.includes(s))
+                    : [];
+                  return (
+                    <div style={{ position: "relative" }}>
+                      <input
+                        style={inputStyle}
+                        placeholder="Add ingredient, press Enter"
+                        value={ingInput}
+                        autoComplete="off"
+                        onChange={e => { setIngInput(e.target.value); setIngSuggIdx(-1); }}
+                        onKeyDown={e => {
+                          if (suggestions.length > 0) {
+                            if (e.key === "ArrowDown") { e.preventDefault(); setIngSuggIdx(i => Math.min(i + 1, suggestions.length - 1)); return; }
+                            if (e.key === "ArrowUp") { e.preventDefault(); setIngSuggIdx(i => Math.max(i - 1, -1)); return; }
+                            if (e.key === "Enter" && ingSuggIdx >= 0) { e.preventDefault(); addIngredient(suggestions[ingSuggIdx]); return; }
+                          }
+                          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commitIngInput(); }
+                        }}
+                        onBlur={commitIngInput}
+                      />
+                      {suggestions.length > 0 && (
+                        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: "#484D52", border: "1px solid #F8EAD520", borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
+                          {suggestions.map((s, i) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); addIngredient(s); }}
+                              style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", fontSize: 14, background: i === ingSuggIdx ? "#F8EAD510" : "transparent", border: "none", borderBottom: i < suggestions.length - 1 ? "1px solid #F8EAD508" : "none", color: "#F8EAD5", cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Image upload */}
