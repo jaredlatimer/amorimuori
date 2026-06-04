@@ -79,7 +79,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
         canvas.width = Math.round(img.naturalWidth * scale);
         canvas.height = Math.round(img.naturalHeight * scale);
         canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Compression failed")), "image/jpeg", 0.85);
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Compression failed")), "image/png");
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
       img.src = url;
@@ -89,7 +89,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
   async function uploadImage(file: File, pizzaId: string): Promise<string> {
     const compressed = await compressImage(file);
     const form = new FormData();
-    form.append("file", new File([compressed], "pizza.jpg", { type: "image/jpeg" }));
+    form.append("file", new File([compressed], "pizza.png", { type: "image/png" }));
     form.append("pizzaId", pizzaId);
     const res = await fetch("/api/admin/upload-pizza-image", { method: "POST", body: form });
     const json = await res.json();
