@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { sendBlast } from "@/lib/email";
+import { sendBlast, sendOrderBlast } from "@/lib/email";
 
 export async function GET() {
   const supabase = await createClient();
@@ -35,13 +35,47 @@ export async function POST(request: Request) {
   }
 
   const service = await createServiceClient();
-
-  const [{ data: orders }, { data: unsubs }] = await Promise.all([
-    service.from("orders").select("customer_email").eq("status", "picked_up"),
-    service.from("email_unsubscribes").select("email"),
-  ]);
-
+  const { data: unsubs } = await service.from("email_unsubscribes").select("email");
   const unsubSet = new Set((unsubs ?? []).map((u: { email: string }) => u.email.toLowerCase()));
+
+  // Tonight's orders — personalized
+  if (body.audience === "current_orders") {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const { data: rawNight } = await service
+      .from("service_nights")
+      .select("id")
+      .eq("is_enabled", true)
+      .gte("service_date", today)
+      .order("service_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!rawNight) return NextResponse.json({ error: "No upcoming service night" }, { status: 400 });
+
+    const { data: currentOrders } = await service
+      .from("orders")
+      .select("customer_name, customer_email, code, pickup_at")
+      .eq("service_night_id", (rawNight as { id: string }).id)
+      .not("status", "in", '("cancelled","refunded","pending_payment")')
+      .order("pickup_at", { ascending: true });
+
+    type Row = { customer_name: string; customer_email: string; code: string; pickup_at: string };
+    const recipients = ((currentOrders ?? []) as Row[])
+      .filter((o) => !!o.customer_email?.trim() && !unsubSet.has(o.customer_email.toLowerCase()))
+      .map((o) => ({ email: o.customer_email, name: o.customer_name, code: o.code, pickupAt: o.pickup_at }));
+
+    try {
+      const sent = await sendOrderBlast({ recipients, subject: body.subject, message: body.body });
+      return NextResponse.json({ sent });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Order blast error:", message);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  // Past customers — generic blast
+  const { data: orders } = await service.from("orders").select("customer_email").eq("status", "picked_up");
   const emails = [
     ...new Set(
       (orders ?? [])
@@ -51,12 +85,7 @@ export async function POST(request: Request) {
   ];
 
   try {
-    const sent = await sendBlast({
-      emails,
-      subject: body.subject,
-      body: body.body,
-      eventDate: body.eventDate ?? undefined,
-    });
+    const sent = await sendBlast({ emails, subject: body.subject, body: body.body, eventDate: body.eventDate ?? undefined });
     return NextResponse.json({ sent });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
