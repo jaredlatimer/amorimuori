@@ -165,26 +165,27 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
             { value: "past", label: "Past customers", count: pastRecipients.length, disabled: false },
           ] as const).map(({ value, label, count, disabled }) => {
             const active = audience === value;
+            const isDisabled = disabled || isTest;
             return (
               <button
                 key={value}
-                onClick={() => !disabled && setAudience(value)}
-                disabled={disabled}
+                onClick={() => !isDisabled && setAudience(value)}
+                disabled={isDisabled}
                 style={{
                   flex: 1,
                   padding: "11px 14px",
                   borderRadius: 10,
-                  border: `1px solid ${active ? "#2F7D4F" : "#F8EAD520"}`,
-                  background: active ? "#2F7D4F22" : "transparent",
-                  color: disabled ? "#F8EAD533" : active ? "#2F7D4F" : "#F8EAD5aa",
+                  border: `1px solid ${active && !isTest ? "#2F7D4F" : "#F8EAD520"}`,
+                  background: active && !isTest ? "#2F7D4F22" : "transparent",
+                  color: isDisabled ? "#F8EAD533" : active ? "#2F7D4F" : "#F8EAD5aa",
                   fontSize: 14, fontWeight: 700,
-                  cursor: disabled ? "not-allowed" : "pointer",
+                  cursor: isDisabled ? "not-allowed" : "pointer",
                   fontFamily: "var(--font-archivo), sans-serif",
                   textAlign: "left",
                 }}
               >
                 {label}
-                <span style={{ display: "block", fontSize: 12, fontWeight: 400, marginTop: 2, color: disabled ? "#F8EAD522" : active ? "#2F7D4Faa" : "#F8EAD544" }}>
+                <span style={{ display: "block", fontSize: 12, fontWeight: 400, marginTop: 2, color: isDisabled ? "#F8EAD522" : active ? "#2F7D4Faa" : "#F8EAD544" }}>
                   {disabled ? "No service night" : `${count} recipient${count !== 1 ? "s" : ""}`}
                 </span>
               </button>
