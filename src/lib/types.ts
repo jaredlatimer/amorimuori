@@ -19,6 +19,7 @@ export interface Pizza {
   price_cents: number;
   nightly_cap: number;
   allergens: string[];
+  ingredients: string[];
   is_active: boolean;
   is_special: boolean;
   sort_order: number;

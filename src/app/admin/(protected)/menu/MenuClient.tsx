@@ -13,6 +13,7 @@ interface Pizza {
   price_cents: number;
   nightly_cap: number;
   allergens: string[];
+  ingredients: string[];
   is_active: boolean;
   is_special: boolean;
   sort_order: number;
@@ -21,7 +22,7 @@ interface Pizza {
 
 const BLANK: Omit<Pizza, "id"> = {
   name: "", description: "", category: "Pizze Rosse",
-  price_cents: 0, nightly_cap: 20, allergens: [],
+  price_cents: 0, nightly_cap: 20, allergens: [], ingredients: [],
   is_active: true, is_special: false, sort_order: 0,
   image_url: null,
 };
@@ -47,6 +48,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
   const [saving, setSaving] = useState(false);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [ingInput, setIngInput] = useState("");
 
   const grouped = CATEGORIES.map((cat) => ({
     category: cat,
@@ -59,6 +61,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
     setIsNew(true);
     setPendingImage(null);
     setUploadError(null);
+    setIngInput("");
   }
 
   function openEdit(pizza: Pizza) {
@@ -66,6 +69,15 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
     setIsNew(false);
     setPendingImage(null);
     setUploadError(null);
+    setIngInput("");
+  }
+
+  function commitIngInput() {
+    const trimmed = ingInput.trim();
+    if (trimmed && editing && !editing.ingredients.includes(trimmed)) {
+      setEditing(p => p && ({ ...p, ingredients: [...p.ingredients, trimmed] }));
+    }
+    setIngInput("");
   }
 
   function compressImage(file: File, maxWidth = 900): Promise<Blob> {
@@ -108,6 +120,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
           name: editing.name, description: editing.description,
           category: editing.category, price_cents: editing.price_cents,
           nightly_cap: editing.nightly_cap, allergens: editing.allergens,
+          ingredients: editing.ingredients,
           is_active: editing.is_active, is_special: editing.is_special,
           sort_order: editing.sort_order, image_url: null,
         }).select().single();
@@ -131,6 +144,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
           name: editing.name, description: editing.description,
           category: editing.category, price_cents: editing.price_cents,
           nightly_cap: editing.nightly_cap, allergens: editing.allergens,
+          ingredients: editing.ingredients,
           is_active: editing.is_active, is_special: editing.is_special,
           sort_order: editing.sort_order,
         }).eq("id", editing.id);
@@ -309,6 +323,38 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
                     {label}
                   </label>
                 ))}
+              </div>
+
+              {/* Ingredients */}
+              <div>
+                <label style={labelStyle}>Ingredients</label>
+                {editing.ingredients.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    {editing.ingredients.map((ing) => (
+                      <span key={ing} style={{ display: "flex", alignItems: "center", gap: 5, background: "#484D52", border: "1px solid #F8EAD520", color: "#F8EAD5", borderRadius: 100, padding: "4px 10px", fontSize: 13 }}>
+                        {ing}
+                        <button
+                          type="button"
+                          onClick={() => setEditing(p => p && ({ ...p, ingredients: p.ingredients.filter(x => x !== ing) }))}
+                          style={{ background: "transparent", border: "none", color: "#F8EAD555", cursor: "pointer", padding: 0, fontSize: 16, lineHeight: 1, display: "flex", alignItems: "center" }}
+                        >×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <input
+                  style={inputStyle}
+                  placeholder="Add ingredient, press Enter"
+                  value={ingInput}
+                  onChange={e => setIngInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      commitIngInput();
+                    }
+                  }}
+                  onBlur={commitIngInput}
+                />
               </div>
 
               {/* Image upload */}
