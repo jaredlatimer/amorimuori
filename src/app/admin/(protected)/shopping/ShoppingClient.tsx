@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Props {
   serviceNight: { id: string; service_date: string };
@@ -27,6 +27,22 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
     initialCustomItems.map(({ id, itemKey, label }) => ({ id, itemKey, label }))
   );
   const [extraInput, setExtraInput] = useState("");
+
+  // Sync state when tab becomes visible (cross-device)
+  useEffect(() => {
+    function sync() {
+      if (document.hidden) return;
+      fetch(`/api/admin/shopping/state?serviceNightId=${serviceNight.id}`)
+        .then(r => r.json())
+        .then(data => {
+          setChecked(Object.fromEntries((data.checkedKeys as string[]).map(k => [k, true])));
+          setExtraItems(data.customItems as ExtraItem[]);
+        })
+        .catch(console.error);
+    }
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, [serviceNight.id]);
 
   function toggle(itemKey: string, label: string, isCustom = false) {
     const newVal = !checked[itemKey];
@@ -93,7 +109,7 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
   const allDone = total > 0 && checkedCount === total;
 
   return (
-    <div style={{ padding: "28px 0 80px", fontFamily: "var(--font-archivo), sans-serif", maxWidth: 540 }}>
+    <div style={{ padding: "28px 4px 80px", fontFamily: "var(--font-archivo), sans-serif", maxWidth: 480 }}>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
