@@ -16,14 +16,14 @@ export async function POST(request: Request) {
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
   const path = `${pizzaId}.${ext}`;
-  const bytes = await file.arrayBuffer();
 
   const service = await createServiceClient();
   const { error } = await service.storage
     .from("pizza-images")
-    .upload(path, bytes, { upsert: true, contentType: file.type });
+    .upload(path, file, { upsert: true, contentType: file.type });
 
   if (error) {
+    console.error("Storage upload error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
