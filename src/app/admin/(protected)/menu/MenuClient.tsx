@@ -96,22 +96,24 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
         if (data) {
           let imageUrl: string | null = null;
           if (pendingImage) {
+            // server route handles both storage upload + DB image_url update
             imageUrl = await uploadImage(pendingImage, data.id);
-            await supabase.from("pizzas").update({ image_url: imageUrl }).eq("id", data.id);
           }
           setPizzas((prev) => [...prev, { ...data, image_url: imageUrl } as Pizza]);
         }
       } else {
         let imageUrl = editing.image_url;
         if (pendingImage) {
+          // server route handles both storage upload + DB image_url update
           imageUrl = await uploadImage(pendingImage, editing.id);
         }
+        // update all fields except image_url (handled server-side on upload)
         await supabase.from("pizzas").update({
           name: editing.name, description: editing.description,
           category: editing.category, price_cents: editing.price_cents,
           nightly_cap: editing.nightly_cap, allergens: editing.allergens,
           is_active: editing.is_active, is_special: editing.is_special,
-          sort_order: editing.sort_order, image_url: imageUrl,
+          sort_order: editing.sort_order,
         }).eq("id", editing.id);
         setPizzas((prev) => prev.map((p) => p.id === editing.id ? { ...editing, image_url: imageUrl } : p));
       }
