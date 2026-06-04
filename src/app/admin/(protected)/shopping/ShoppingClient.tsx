@@ -32,29 +32,17 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
   // Realtime sync — instant cross-device updates
   useEffect(() => {
     const supabase = createClient();
+
+    async function refetch() {
+      const res = await fetch(`/api/admin/shopping/state?serviceNightId=${serviceNight.id}`);
+      const data = await res.json();
+      setChecked(Object.fromEntries((data.checkedKeys as string[]).map((k: string) => [k, true])));
+      setExtraItems(data.customItems as ExtraItem[]);
+    }
+
     const channel = supabase
       .channel(`shopping-${serviceNight.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "shopping_items", filter: `service_night_id=eq.${serviceNight.id}` },
-        (payload) => {
-          if (payload.eventType === "UPDATE" || payload.eventType === "INSERT") {
-            const row = payload.new as { id: string; item_key: string; label: string; is_checked: boolean; is_custom: boolean };
-            setChecked(prev => ({ ...prev, [row.item_key]: row.is_checked }));
-            if (row.is_custom) {
-              setExtraItems(prev =>
-                prev.some(i => i.id === row.id)
-                  ? prev
-                  : [...prev, { id: row.id, itemKey: row.item_key, label: row.label }]
-              );
-            }
-          } else if (payload.eventType === "DELETE") {
-            const row = payload.old as { id: string; item_key: string };
-            setChecked(prev => { const { [row.item_key]: _, ...rest } = prev; return rest; });
-            setExtraItems(prev => prev.filter(i => i.id !== row.id));
-          }
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items", filter: `service_night_id=eq.${serviceNight.id}` }, () => refetch())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
