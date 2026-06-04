@@ -69,14 +69,13 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
   }
 
   async function uploadImage(file: File, pizzaId: string): Promise<string> {
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const path = `${pizzaId}.${ext}`;
-    const { error } = await supabase.storage
-      .from("pizza-images")
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (error) throw new Error(error.message);
-    const { data: { publicUrl } } = supabase.storage.from("pizza-images").getPublicUrl(path);
-    return publicUrl;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("pizzaId", pizzaId);
+    const res = await fetch("/api/admin/upload-pizza-image", { method: "POST", body: form });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? "Upload failed");
+    return json.publicUrl as string;
   }
 
   async function save() {
