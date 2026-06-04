@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface Props {
   serviceNight: { id: string; service_date: string };
   totalPizzas: number;
   ingredients: { name: string; count: number }[];
+  initialCheckedKeys: string[];
+  initialCustomItems: { id: string; itemKey: string; label: string; isChecked: boolean }[];
 }
 
 type CheckedState = Record<string, boolean>;
-type ExtraItem = { id: string; label: string };
+type ExtraItem = { id: string; itemKey: string; label: string };
 
 function formatDate(dateStr: string) {
   return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
@@ -17,65 +19,75 @@ function formatDate(dateStr: string) {
   });
 }
 
-export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props) {
-  const checkedKey = `shopping-checked-${serviceNight.id}`;
-  const extraKey = `shopping-extra-${serviceNight.id}`;
-
-  const [checked, setChecked] = useState<CheckedState>({});
-  const [extraItems, setExtraItems] = useState<ExtraItem[]>([]);
+export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initialCheckedKeys, initialCustomItems }: Props) {
+  const [checked, setChecked] = useState<CheckedState>(() =>
+    Object.fromEntries(initialCheckedKeys.map(k => [k, true]))
+  );
+  const [extraItems, setExtraItems] = useState<ExtraItem[]>(
+    initialCustomItems.map(({ id, itemKey, label }) => ({ id, itemKey, label }))
+  );
   const [extraInput, setExtraInput] = useState("");
-  const [hydrated, setHydrated] = useState(false);
 
-  useEffect(() => {
-    const stored = localStorage.getItem(checkedKey);
-    if (stored) { try { setChecked(JSON.parse(stored)); } catch { /* ignore */ } }
-    const storedExtra = localStorage.getItem(extraKey);
-    if (storedExtra) { try { setExtraItems(JSON.parse(storedExtra)); } catch { /* ignore */ } }
-    setHydrated(true);
-  }, [checkedKey, extraKey]);
-
-  function toggle(key: string) {
-    setChecked(prev => {
-      const next = { ...prev, [key]: !prev[key] };
-      localStorage.setItem(checkedKey, JSON.stringify(next));
-      return next;
-    });
+  function toggle(itemKey: string, label: string, isCustom = false) {
+    const newVal = !checked[itemKey];
+    setChecked(prev => ({ ...prev, [itemKey]: newVal }));
+    fetch("/api/admin/shopping/toggle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serviceNightId: serviceNight.id, itemKey, label, isChecked: newVal, isCustom }),
+    }).catch(console.error);
   }
 
-  function addExtra() {
+  async function addExtra() {
     const trimmed = extraInput.trim();
     if (!trimmed) return;
-    const item: ExtraItem = { id: `extra-${Date.now()}`, label: trimmed };
-    setExtraItems(prev => {
-      const next = [...prev, item];
-      localStorage.setItem(extraKey, JSON.stringify(next));
-      return next;
-    });
     setExtraInput("");
+    const tempId = `temp-${Date.now()}`;
+    const tempItem: ExtraItem = { id: tempId, itemKey: tempId, label: trimmed };
+    setExtraItems(prev => [...prev, tempItem]);
+
+    const res = await fetch("/api/admin/shopping/custom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serviceNightId: serviceNight.id, label: trimmed }),
+    });
+    const json = await res.json();
+    if (res.ok) {
+      setExtraItems(prev => prev.map(i => i.id === tempId ? { id: json.id, itemKey: json.itemKey, label: trimmed } : i));
+    } else {
+      setExtraItems(prev => prev.filter(i => i.id !== tempId));
+    }
   }
 
-  function removeExtra(id: string) {
-    setExtraItems(prev => {
-      const next = prev.filter(i => i.id !== id);
-      localStorage.setItem(extraKey, JSON.stringify(next));
-      return next;
-    });
-    setChecked(prev => {
-      const { [id]: _, ...rest } = prev;
-      localStorage.setItem(checkedKey, JSON.stringify(rest));
-      return rest;
-    });
+  function removeExtra(item: ExtraItem) {
+    setExtraItems(prev => prev.filter(i => i.id !== item.id));
+    setChecked(prev => { const { [item.itemKey]: _, ...rest } = prev; return rest; });
+    fetch("/api/admin/shopping/custom", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id }),
+    }).catch(console.error);
   }
 
   function reset() {
     setChecked({});
-    localStorage.removeItem(checkedKey);
+    const allKeys = ["dough", ...ingredients.map(i => i.name), ...extraItems.map(i => i.itemKey)];
+    allKeys.forEach(itemKey => {
+      const label = itemKey === "dough" ? "Dough"
+        : ingredients.find(i => i.name === itemKey)?.name
+        ?? extraItems.find(i => i.itemKey === itemKey)?.label
+        ?? itemKey;
+      const isCustom = extraItems.some(i => i.itemKey === itemKey);
+      fetch("/api/admin/shopping/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serviceNightId: serviceNight.id, itemKey, label, isChecked: false, isCustom }),
+      }).catch(console.error);
+    });
   }
 
-  if (!hydrated) return null;
-
   const DOUGH_KEY = "dough";
-  const allKeys = [DOUGH_KEY, ...ingredients.map(i => i.name), ...extraItems.map(i => i.id)];
+  const allKeys = [DOUGH_KEY, ...ingredients.map(i => i.name), ...extraItems.map(i => i.itemKey)];
   const checkedCount = allKeys.filter(k => checked[k]).length;
   const total = allKeys.length;
   const allDone = total > 0 && checkedCount === total;
@@ -119,7 +131,7 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props
           label={`${totalPizzas} dough ball${totalPizzas !== 1 ? "s" : ""}`}
           sub={`${(totalPizzas * 200).toLocaleString()}g total`}
           isChecked={!!checked[DOUGH_KEY]}
-          onToggle={() => toggle(DOUGH_KEY)}
+          onToggle={() => toggle(DOUGH_KEY, "Dough")}
           large
         />
       </div>
@@ -135,7 +147,7 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props
                 label={ing.name}
                 sub={`${ing.count} pizza${ing.count !== 1 ? "s" : ""}`}
                 isChecked={!!checked[ing.name]}
-                onToggle={() => toggle(ing.name)}
+                onToggle={() => toggle(ing.name, ing.name)}
               />
             ))}
           </div>
@@ -154,16 +166,16 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients }: Props
         </p>
       )}
 
-      {/* Other items */}
+      {/* Other */}
       <SectionHeader label="Other" />
       <div style={{ display: "grid", gap: 2, marginBottom: 10 }}>
         {extraItems.map(item => (
           <RowWithDelete
             key={item.id}
             label={item.label}
-            isChecked={!!checked[item.id]}
-            onToggle={() => toggle(item.id)}
-            onDelete={() => removeExtra(item.id)}
+            isChecked={!!checked[item.itemKey]}
+            onToggle={() => toggle(item.itemKey, item.label, true)}
+            onDelete={() => removeExtra(item)}
           />
         ))}
       </div>
@@ -301,8 +313,7 @@ function RowWithDelete({ label, isChecked, onToggle, onDelete }: {
         style={{
           background: "transparent", border: "none",
           color: "#F8EAD533", cursor: "pointer",
-          padding: "0 10px", fontSize: 20, lineHeight: 1,
-          flexShrink: 0,
+          padding: "0 10px", fontSize: 20, lineHeight: 1, flexShrink: 0,
         }}
       >
         ×

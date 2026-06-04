@@ -27,6 +27,7 @@ export default async function ShoppingPage() {
 
   const night = rawNight as { id: string; service_date: string };
 
+  // Orders → pizza quantities
   const { data: existingOrders } = await supabase
     .from("orders")
     .select("id")
@@ -48,6 +49,7 @@ export default async function ShoppingPage() {
     }
   }
 
+  // Aggregate ingredients
   const orderedPizzaIds = Object.keys(pizzaQtys);
   const ingCounts: Record<string, number> = {};
 
@@ -69,11 +71,30 @@ export default async function ShoppingPage() {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([name, count]) => ({ name, count }));
 
+  // Saved state from DB
+  const { data: savedItems } = await supabase
+    .from("shopping_items")
+    .select("id, item_key, label, is_checked, is_custom, created_at")
+    .eq("service_night_id", night.id)
+    .order("created_at", { ascending: true });
+
+  const rows = (savedItems ?? []) as {
+    id: string; item_key: string; label: string;
+    is_checked: boolean; is_custom: boolean; created_at: string;
+  }[];
+
+  const checkedKeys = new Set(rows.filter(r => r.is_checked).map(r => r.item_key));
+  const customItems = rows
+    .filter(r => r.is_custom)
+    .map(r => ({ id: r.id, itemKey: r.item_key, label: r.label, isChecked: r.is_checked }));
+
   return (
     <ShoppingClient
       serviceNight={night}
       totalPizzas={totalPizzas}
       ingredients={ingredients}
+      initialCheckedKeys={Array.from(checkedKeys)}
+      initialCustomItems={customItems}
     />
   );
 }
