@@ -289,7 +289,7 @@ export function MenuClient({ initialPizzas }: { initialPizzas: Pizza[] }) {
 
               <div>
                 <label style={labelStyle}>Description</label>
-                <input style={inputStyle} value={editing.description} onChange={(e) => setEditing((p) => p && ({ ...p, description: e.target.value }))} />
+                <textarea style={{ ...inputStyle, resize: "vertical", minHeight: 72, lineHeight: 1.5 }} value={editing.description} onChange={(e) => setEditing((p) => p && ({ ...p, description: e.target.value }))} />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
