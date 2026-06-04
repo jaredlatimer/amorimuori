@@ -28,10 +28,9 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
   );
   const [extraInput, setExtraInput] = useState("");
 
-  // Sync state when tab becomes visible (cross-device)
+  // Sync state cross-device: poll every 15s + re-fetch on tab focus
   useEffect(() => {
     function sync() {
-      if (document.hidden) return;
       fetch(`/api/admin/shopping/state?serviceNightId=${serviceNight.id}`)
         .then(r => r.json())
         .then(data => {
@@ -40,8 +39,14 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
         })
         .catch(console.error);
     }
+    const interval = setInterval(sync, 15_000);
     document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+    };
   }, [serviceNight.id]);
 
   function toggle(itemKey: string, label: string, isCustom = false) {
