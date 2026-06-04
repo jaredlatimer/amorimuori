@@ -148,7 +148,7 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
       <div style={{ marginBottom: 28 }}>
         <Row
           label={`${totalPizzas} dough ball${totalPizzas !== 1 ? "s" : ""}`}
-          sub={`${(totalPizzas * 200).toLocaleString()}g total`}
+          sub={`${(totalPizzas * 220).toLocaleString()}g total`}
           isChecked={!!checked[DOUGH_KEY]}
           onToggle={() => toggle(DOUGH_KEY, "Dough")}
           large
