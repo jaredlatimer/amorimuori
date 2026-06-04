@@ -107,6 +107,90 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
 
   return (
     <div style={{ margin: "0 -24px" }}>
+      <style>{`
+        .kitchen-body {
+          display: flex;
+          flex-direction: row;
+          height: calc(100vh - 56px - 57px);
+          background: #22252a;
+          overflow: hidden;
+        }
+        .kitchen-ticket-panel {
+          flex: 1 1 0;
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          overflow: hidden;
+        }
+        .kitchen-ticket-card {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          border-radius: 18px;
+        }
+        .kitchen-items {
+          flex: 1;
+          overflow-y: auto;
+          padding: 10px 30px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .kitchen-queue-panel {
+          width: 280px;
+          background: #3A3E43;
+          padding: 20px 16px;
+          overflow-y: auto;
+          overflow-x: hidden;
+          flex-shrink: 0;
+        }
+        .kitchen-queue-inner {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .kitchen-queue-card {
+          background: #F8EAD50d;
+          border: 1px solid #F8EAD51a;
+          border-radius: 11px;
+          padding: 12px 14px;
+        }
+
+        @media (max-width: 640px) {
+          .kitchen-body {
+            flex-direction: column;
+          }
+          .kitchen-ticket-panel {
+            flex: 1;
+            padding: 12px;
+            min-height: 0;
+          }
+          .kitchen-queue-panel {
+            width: 100%;
+            height: 150px;
+            min-height: 150px;
+            padding: 10px 12px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex-shrink: 0;
+          }
+          .kitchen-queue-inner {
+            flex-direction: row;
+            align-items: flex-start;
+            height: 100%;
+          }
+          .kitchen-queue-label {
+            display: none;
+          }
+          .kitchen-queue-card {
+            flex-shrink: 0;
+            min-width: 160px;
+          }
+        }
+      `}</style>
+
       {/* Header */}
       <div style={{ background: "#3A3E43", padding: "14px 26px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #F8EAD510" }}>
         <div className="font-display" style={{ fontWeight: 900, fontSize: 19, color: "#F8EAD5", letterSpacing: 0.5 }}>
@@ -118,20 +202,22 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
         </div>
       </div>
 
-      {/* Body: current order + up-next rail */}
-      <div style={{ display: "flex", minHeight: "calc(100vh - 56px - 57px)", background: "#22252a" }}>
+      {/* Body */}
+      <div className="kitchen-body">
 
-        {/* ── Left: single focused order ── */}
-        <div style={{ flex: "1 1 0", padding: 24, display: "flex", flexDirection: "column" }}>
+        {/* Ticket panel */}
+        <div className="kitchen-ticket-panel">
           {!current ? (
             <div style={{ margin: "auto", textAlign: "center", color: "#F8EAD544", fontSize: 26 }}>
               All caught up. 🎉
             </div>
           ) : (
-            <div className={glowingIds.has(current.id) ? "order-new-glow" : undefined} style={{ background: "#fff", borderRadius: 18, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", border: `4px solid ${STATUS_COLOR[current.status]}` }}>
-
+            <div
+              className={`kitchen-ticket-card${glowingIds.has(current.id) ? " order-new-glow" : ""}`}
+              style={{ background: "#fff", border: `4px solid ${STATUS_COLOR[current.status]}` }}
+            >
               {/* Status band */}
-              <div style={{ background: STATUS_COLOR[current.status], color: "#fff", padding: "16px 26px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ background: STATUS_COLOR[current.status], color: "#fff", padding: "16px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
                 <div>
                   <div style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 700, opacity: 0.85 }}>
                     {STATUS_LABEL[current.status]}
@@ -148,8 +234,8 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
                 </div>
               </div>
 
-              {/* Items — oversized for across-kitchen readability */}
-              <div style={{ padding: "10px 30px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              {/* Items */}
+              <div className="kitchen-items">
                 {items.filter((i) => i.order_id === current.id).map((item, li, arr) => (
                   <div key={item.pizza_name} style={{ display: "flex", alignItems: "center", gap: 22, padding: "18px 0", borderBottom: li < arr.length - 1 ? "2px solid #f0f0ee" : "none" }}>
                     <span className="font-display" style={{ fontSize: 60, fontWeight: 900, color: "#256340", minWidth: 90, lineHeight: 1 }}>
@@ -163,7 +249,7 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
               </div>
 
               {/* Action button */}
-              <div style={{ padding: "18px 26px", borderTop: "2px dashed #ddd" }}>
+              <div style={{ padding: "18px 26px", borderTop: "2px dashed #ddd", flexShrink: 0 }}>
                 <button
                   onClick={() => advance(current)}
                   disabled={updating}
@@ -181,17 +267,17 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
           )}
         </div>
 
-        {/* ── Right: up-next rail (280px) ── */}
-        <div style={{ width: 280, background: "#3A3E43", padding: "20px 16px", overflowY: "auto", flexShrink: 0 }}>
-          <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "#F8EAD577", fontWeight: 700, marginBottom: 14, paddingLeft: 4 }}>
+        {/* Queue panel */}
+        <div className="kitchen-queue-panel">
+          <div className="kitchen-queue-label" style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "#F8EAD577", fontWeight: 700, marginBottom: 14, paddingLeft: 4 }}>
             Up next · {upNext.length}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="kitchen-queue-inner">
             {upNext.length === 0 && (
               <div style={{ color: "#F8EAD544", fontSize: 14, paddingLeft: 4 }}>Nothing waiting.</div>
             )}
             {upNext.map((o, idx) => (
-              <div key={o.id} className={glowingIds.has(o.id) ? "order-new-glow" : undefined} style={{ background: "#F8EAD50d", border: "1px solid #F8EAD51a", borderRadius: 11, padding: "12px 14px" }}>
+              <div key={o.id} className={`kitchen-queue-card${glowingIds.has(o.id) ? " order-new-glow" : ""}`}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                   <span style={{ fontSize: 13, color: "#F8EAD599", fontWeight: 600 }}>#{idx + 2}</span>
                   <span className="font-display" style={{ fontWeight: 900, fontSize: 16, color: "#F8EAD5" }}>
@@ -207,6 +293,7 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
             ))}
           </div>
         </div>
+
       </div>
     </div>
   );
