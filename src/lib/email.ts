@@ -362,6 +362,111 @@ export async function sendReminderBlast(emails: string[], fridayDate?: string): 
   return sent;
 }
 
+// ── Afternoon reminder (automated 3:30 PM cron) ───────────────────────────────
+
+export interface AfternoonReminderRecipient {
+  customer_name: string;
+  customer_email: string;
+  code: string;
+  pickup_at: string;
+}
+
+export async function sendAfternoonReminder(recipients: AfternoonReminderRecipient[]): Promise<number> {
+  if (recipients.length === 0) return 0;
+
+  const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
+  const BATCH_SIZE = 50;
+  let sent = 0;
+
+  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    const chunk = recipients.slice(i, i + BATCH_SIZE);
+    await resend.batch.send(
+      chunk.map((r) => {
+        const sig = generateUnsubscribeSig(r.customer_email);
+        const unsubUrl = `${SITE}/unsubscribe?email=${encodeURIComponent(r.customer_email)}&sig=${sig}`;
+        const pickupTime = new Date(r.pickup_at).toLocaleTimeString("en-US", {
+          hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+        });
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>See you tonight!</title>
+</head>
+<body style="margin:0;padding:0;background:#484D52;font-family:Georgia,serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#484D52;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:520px;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding-bottom:28px;text-align:center;">
+              <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#F8EAD5aa;font-family:Arial,sans-serif;">Amori Muori</p>
+              <h1 style="margin:10px 0 0;font-size:36px;font-weight:900;color:#F8EAD5;line-height:1.1;">See you tonight!</h1>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#F8EAD5;border-radius:16px;padding:28px;">
+              <p style="margin:0 0 16px;font-size:17px;font-weight:700;color:#484D52;font-family:Arial,sans-serif;">Hi ${r.customer_name},</p>
+              <p style="margin:0 0 20px;font-size:16px;color:#484D52;font-family:Arial,sans-serif;line-height:1.6;">
+                Just a reminder that your pizza is coming up tonight. Here's everything you need:
+              </p>
+
+              <!-- Pickup time -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+                <tr>
+                  <td style="background:#2F7D4F18;border:1px solid #2F7D4F44;border-radius:12px;padding:16px 18px;">
+                    <p style="margin:0;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#2F7D4F;font-weight:700;font-family:Arial,sans-serif;">Your pickup time</p>
+                    <p style="margin:6px 0 0;font-size:30px;font-weight:900;color:#2F7D4F;font-family:Arial,sans-serif;line-height:1;">${pickupTime}</p>
+                    <p style="margin:4px 0 0;font-size:13px;color:#484D5299;font-family:Arial,sans-serif;">Order ${r.code}</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Address -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#484D5208;border:1px solid #484D5220;border-radius:12px;padding:16px 18px;">
+                    <p style="margin:0;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#484D52;font-weight:700;font-family:Arial,sans-serif;">📍 Pickup address</p>
+                    <p style="margin:6px 0 0;font-size:16px;font-weight:700;color:#484D52;font-family:Arial,sans-serif;">${PICKUP_ADDRESS}</p>
+                    <p style="margin:4px 0 0;font-size:13px;color:#484D5299;font-family:Arial,sans-serif;">Ashburn Farm neighborhood. Look for the pizza oven.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 0 0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#F8EAD544;font-family:Arial,sans-serif;line-height:1.8;">
+                You're receiving this because you have an order tonight.<br />
+                <a href="${unsubUrl}" style="color:#F8EAD566;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+        return { from: FROM, to: r.customer_email, subject: `See you tonight — pickup at ${pickupTime}`, html };
+      })
+    );
+    sent += chunk.length;
+  }
+
+  return sent;
+}
+
 // ── Order blast (personalized, tonight's customers) ────────────────────────────
 
 export interface OrderBlastRecipient {
