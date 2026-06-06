@@ -24,7 +24,7 @@ interface Props {
 }
 
 const STATUS_COLOR = { new: "#C9A227", making: "#3D7BC9" };
-const STATUS_LABEL = { new: "Up next", making: "In the oven" };
+const STATUS_LABEL = { new: "Up next", making: "In Progress" };
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", {
@@ -34,6 +34,12 @@ function formatTime(iso: string) {
   });
 }
 
+type PizzaState = "idle" | "al_banco" | "al_forno" | "boxed";
+
+function pizzaKey(orderId: string, pizzaName: string, index: number) {
+  return `${orderId}::${pizzaName}::${index}`;
+}
+
 export function KitchenClient({ serviceNightId, initialOrders, initialItems }: Props) {
   const [orders, setOrders] = useState<Order[]>(
     [...initialOrders].sort((a, b) => new Date(a.pickup_at).getTime() - new Date(b.pickup_at).getTime())
@@ -41,6 +47,7 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState(false);
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
+  const [pizzaStates, setPizzaStates] = useState<Map<string, PizzaState>>(new Map());
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
   const supabase = createClient();
 
@@ -98,6 +105,14 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
     } else {
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "making" } : o)));
+    }
+  }
+
+  async function setPizzaStageAndAdvance(order: Order, key: string, stage: PizzaState) {
+    setPizzaStates((prev) => new Map(prev).set(key, stage));
+    // First pizza going al banco → auto-start the order
+    if (stage === "al_banco" && order.status === "new") {
+      await advance(order);
     }
   }
 
@@ -196,9 +211,33 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
         <div className="font-display" style={{ fontWeight: 900, fontSize: 19, color: "#F8EAD5", letterSpacing: 0.5 }}>
           KITCHEN
         </div>
-        <div style={{ fontSize: 14, color: "#F8EAD5aa" }}>
-          <strong style={{ color: "#F8EAD5" }}>{orders.length}</strong> orders ·{" "}
-          <strong style={{ color: "#F8EAD5" }}>{totalPizzas}</strong> pizzas to make
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {process.env.NODE_ENV === "development" && (
+            <button
+              onClick={() => {
+                const id = `fake-${Date.now()}`;
+                const fakeOrder: Order = {
+                  id, code: "TST-K1", customer_name: "Test Customer",
+                  pickup_at: new Date(Date.now() + 30 * 60000).toISOString(),
+                  status: "new",
+                };
+                const fakeItems: Item[] = [
+                  { order_id: id, pizza_name: "Margherita", quantity: 2 },
+                  { order_id: id, pizza_name: "Diavola", quantity: 1 },
+                ];
+                prevIdsRef.current.add(id);
+                setOrders((prev) => [...prev, fakeOrder].sort((a, b) => new Date(a.pickup_at).getTime() - new Date(b.pickup_at).getTime()));
+                setItems((prev) => [...prev, ...fakeItems]);
+              }}
+              style={{ background: "#2F7D4F22", border: "1px solid #2F7D4F66", color: "#2F7D4F", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
+            >
+              + Fake order
+            </button>
+          )}
+          <div style={{ fontSize: 14, color: "#F8EAD5aa" }}>
+            <strong style={{ color: "#F8EAD5" }}>{orders.length}</strong> orders ·{" "}
+            <strong style={{ color: "#F8EAD5" }}>{totalPizzas}</strong> pizzas to make
+          </div>
         </div>
       </div>
 
@@ -234,35 +273,96 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
                 </div>
               </div>
 
-              {/* Items */}
+              {/* Items — individual pizza tracking */}
               <div className="kitchen-items">
-                {items.filter((i) => i.order_id === current.id).map((item, li, arr) => (
-                  <div key={item.pizza_name} style={{ display: "flex", alignItems: "center", gap: 22, padding: "18px 0", borderBottom: li < arr.length - 1 ? "2px solid #f0f0ee" : "none" }}>
-                    <span className="font-display" style={{ fontSize: 60, fontWeight: 900, color: "#256340", minWidth: 90, lineHeight: 1 }}>
-                      {item.quantity}×
-                    </span>
-                    <span style={{ fontSize: 30, fontWeight: 700, color: "#484D52", lineHeight: 1.1 }}>
-                      {item.pizza_name}
-                    </span>
-                  </div>
-                ))}
+                {items.filter((i) => i.order_id === current.id).flatMap((item) =>
+                  Array.from({ length: item.quantity }, (_, idx) => {
+                    const key = pizzaKey(current.id, item.pizza_name, idx);
+                    const stage = pizzaStates.get(key) ?? "idle";
+                    return (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 0", borderBottom: "2px solid #f0f0ee" }}>
+                        {/* Pizza name */}
+                        <span style={{ flex: 1, fontSize: 26, fontWeight: 700, color: stage === "boxed" ? "#aaa" : "#484D52", lineHeight: 1.1, textDecoration: stage === "boxed" ? "line-through" : "none" }}>
+                          {item.pizza_name}
+                        </span>
+                        {/* Stage badge */}
+                        {stage === "al_banco" && (
+                          <span style={{ fontSize: 12, fontWeight: 700, background: "#C9A22722", color: "#C9A227", borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>
+                            Al Banco
+                          </span>
+                        )}
+                        {stage === "al_forno" && (
+                          <span style={{ fontSize: 12, fontWeight: 700, background: "#3D7BC922", color: "#3D7BC9", borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>
+                            Al Forno
+                          </span>
+                        )}
+                        {stage === "boxed" && (
+                          <span style={{ fontSize: 12, fontWeight: 700, background: "#2F7D4F22", color: "#2F7D4F", borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>
+                            Boxed ✓
+                          </span>
+                        )}
+                        {/* Action buttons */}
+                        {stage === "idle" && (
+                          <button
+                            onClick={() => setPizzaStageAndAdvance(current, key, "al_banco")}
+                            style={{ border: "2px solid #2F7D4F", background: "transparent", color: "#2F7D4F", borderRadius: 10, padding: "8px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-archivo), sans-serif" }}
+                          >
+                            Al Banco
+                          </button>
+                        )}
+                        {stage === "al_banco" && (
+                          <button
+                            onClick={() => setPizzaStageAndAdvance(current, key, "al_forno")}
+                            style={{ border: "none", background: "#3D7BC9", color: "#fff", borderRadius: 10, padding: "8px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-archivo), sans-serif" }}
+                          >
+                            Al Forno
+                          </button>
+                        )}
+                        {stage === "al_forno" && (
+                          <button
+                            onClick={() => setPizzaStageAndAdvance(current, key, "boxed")}
+                            style={{ border: "none", background: "#2F7D4F", color: "#fff", borderRadius: 10, padding: "8px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-archivo), sans-serif" }}
+                          >
+                            Boxed
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              {/* Action button */}
-              <div style={{ padding: "18px 26px", borderTop: "2px dashed #ddd", flexShrink: 0 }}>
-                <button
-                  onClick={() => advance(current)}
-                  disabled={updating}
-                  style={{
-                    width: "100%", border: "none", cursor: updating ? "not-allowed" : "pointer",
-                    fontFamily: "var(--font-archivo), sans-serif", fontWeight: 900, color: "#fff",
-                    background: updating ? "#aaa" : current.status === "making" ? "#3D7BC9" : "#2F7D4F",
-                    borderRadius: 14, padding: "20px", fontSize: 22, letterSpacing: 0.5,
-                  }}
-                >
-                  {updating ? "…" : current.status === "making" ? "MARK READY ✓" : "START THIS ORDER"}
-                </button>
-              </div>
+              {/* Action button — Mark Ready once all pizzas are boxed */}
+              {(() => {
+                const currentItems = items.filter((i) => i.order_id === current.id);
+                const allKeys = currentItems.flatMap((item) =>
+                  Array.from({ length: item.quantity }, (_, idx) => pizzaKey(current.id, item.pizza_name, idx))
+                );
+                const allBoxed = allKeys.length > 0 && allKeys.every((k) => pizzaStates.get(k) === "boxed");
+                return (
+                  <div style={{ padding: "18px 26px", borderTop: "2px dashed #ddd", flexShrink: 0 }}>
+                    {current.status === "making" ? (
+                      <button
+                        onClick={() => advance(current)}
+                        disabled={updating || !allBoxed}
+                        style={{
+                          width: "100%", border: "none",
+                          cursor: updating || !allBoxed ? "not-allowed" : "pointer",
+                          fontFamily: "var(--font-archivo), sans-serif", fontWeight: 900, color: "#fff",
+                          background: updating || !allBoxed ? "#aaa" : "#3D7BC9",
+                          borderRadius: 14, padding: "20px", fontSize: 22, letterSpacing: 0.5,
+                        }}
+                      >
+                        {updating ? "…" : allBoxed ? "MARK READY ✓" : "BOX ALL PIZZAS FIRST"}
+                      </button>
+                    ) : (
+                      <div style={{ textAlign: "center", fontSize: 14, color: "#aaa", padding: "6px 0" }}>
+                        Tap <strong>Al Banco</strong> on each pizza to start this order
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -278,11 +378,14 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
             )}
             {upNext.map((o, idx) => (
               <div key={o.id} className={`kitchen-queue-card${glowingIds.has(o.id) ? " order-new-glow" : ""}`}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 13, color: "#F8EAD599", fontWeight: 600 }}>#{idx + 2}</span>
                   <span className="font-display" style={{ fontWeight: 900, fontSize: 16, color: "#F8EAD5" }}>
                     {formatTime(o.pickup_at)}
                   </span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#F8EAD5", marginBottom: 4 }}>
+                  {o.customer_name}
                 </div>
                 {items.filter((i) => i.order_id === o.id).map((item) => (
                   <div key={item.pizza_name} style={{ fontSize: 14, color: "#F8EAD5", lineHeight: 1.5 }}>

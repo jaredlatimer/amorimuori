@@ -102,12 +102,13 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState<string | null>(null);
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
+  const [arrivedIds, setArrivedIds] = useState<Set<string>>(new Set());
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
-  const [toasts, setToasts] = useState<{ id: string; message: string; exiting: boolean }[]>([]);
+  const [toasts, setToasts] = useState<{ id: string; message: string; color: string; exiting: boolean }[]>([]);
 
-  function addToast(message: string) {
+  function addToast(message: string, color = "#2F7D4F") {
     const id = `toast-${Date.now()}`;
-    setToasts((prev) => [...prev, { id, message, exiting: false }]);
+    setToasts((prev) => [...prev, { id, message, color, exiting: false }]);
     setTimeout(() => {
       setToasts((prev) => prev.map((t) => t.id === id ? { ...t, exiting: true } : t));
       setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 400);
@@ -196,10 +197,28 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
         },
         () => { refetch(); }
       )
+      .on(
+        "broadcast",
+        { event: "customer_arrived" },
+        ({ payload }: { payload: { orderId: string; customerName: string } }) => {
+          setArrivedIds((prev) => new Set([...prev, payload.orderId]));
+          addToast(`🚶 ${payload.customerName} has arrived`, "#C9A227");
+        }
+      )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [serviceNight.id, refetch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function markArrived(order: Order) {
+    setArrivedIds((prev) => new Set([...prev, order.id]));
+    addToast(`🚶 ${order.customer_name} has arrived`, "#C9A227");
+    await supabase.channel(`orders-admin-${serviceNight.id}`).send({
+      type: "broadcast",
+      event: "customer_arrived",
+      payload: { orderId: order.id, customerName: order.customer_name },
+    });
+  }
 
   async function updateStatus(orderId: string, status: OrderStatus) {
     setUpdating(orderId);
@@ -365,12 +384,15 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
                       items={items.filter((i) => i.order_id === order.id)}
                       updating={updating === order.id}
                       glowing={glowingIds.has(order.id)}
+                      arrived={arrivedIds.has(order.id)}
+                      serviceNight={serviceNight}
                       onAdvance={() => {
                         const next = NEXT_STATUS[order.status];
                         if (next) updateStatus(order.id, next);
                       }}
                       onCancel={() => updateStatus(order.id, "cancelled")}
                       onRestore={() => updateStatus(order.id, "new")}
+                      onArrived={() => markArrived(order)}
                     />
                   ))}
                 </div>
@@ -387,7 +409,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
             key={toast.id}
             className={toast.exiting ? "toast-exit" : "toast-enter"}
             style={{
-              background: "#2F7D4F",
+              background: toast.color,
               color: "#F8EAD5",
               borderRadius: 12,
               padding: "13px 20px",
@@ -398,7 +420,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
               whiteSpace: "nowrap",
             }}
           >
-            New order received
+            {toast.message}
           </div>
         ))}
       </div>
@@ -411,17 +433,23 @@ function OrderCard({
   items,
   updating,
   glowing,
+  arrived,
+  serviceNight,
   onAdvance,
   onCancel,
   onRestore,
+  onArrived,
 }: {
   order: Order;
   items: Item[];
   updating: boolean;
   glowing: boolean;
+  arrived: boolean;
+  serviceNight: ServiceNight;
   onAdvance: () => void;
   onCancel: () => void;
   onRestore: () => void;
+  onArrived: () => void;
 }) {
   const [confirmAction, setConfirmAction] = useState<"cancel" | "restore" | null>(null);
   const [glowState, setGlowState] = useState<"hold" | "animating" | "done">("done");
@@ -450,6 +478,8 @@ function OrderCard({
   const canCancel = order.status === "new" || order.status === "making";
   const isCancelled = order.status === "cancelled";
   const terminal = order.status === "picked_up" || order.status === "refunded";
+  const serviceStartMs = new Date(`${serviceNight.service_date}T${serviceNight.service_start.slice(0, 5)}:00-04:00`).getTime();
+  const serviceStarted = Date.now() >= serviceStartMs;
 
   const btnBase: React.CSSProperties = {
     borderRadius: 8, padding: "7px 14px", fontSize: 13,
@@ -484,6 +514,11 @@ function OrderCard({
               {updating ? "…" : nextLabel}
             </button>
           )}
+          {(order.status === "new" || order.status === "making" || order.status === "ready") && !arrived && serviceStarted && (
+            <button onClick={onArrived} style={{ ...btnBase, background: "#C9A22722", border: "1px solid #C9A22766", color: "#C9A227", fontWeight: 700 }}>
+              Customer Arrived
+            </button>
+          )}
           {isCancelled && (
             <button onClick={() => setConfirmAction("restore")} disabled={updating} style={{ ...btnBase, background: "#2F7D4F22", border: "1px solid #2F7D4F66", color: "#2F7D4F", fontWeight: 700 }}>
               Restore
@@ -516,6 +551,11 @@ function OrderCard({
             <span style={{ fontSize: 12, fontWeight: 700, background: sc.bg, color: sc.color, borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5 }}>
               {STATUS_LABELS[order.status]}
             </span>
+            {arrived && (
+              <span style={{ fontSize: 12, fontWeight: 700, background: "#C9A22722", color: "#C9A227", borderRadius: 100, padding: "3px 10px", letterSpacing: 0.5 }}>
+                🚶 Arrived
+              </span>
+            )}
           </div>
           <div style={{ marginTop: 4, fontSize: 15, color: "#2F7D4F", fontWeight: 700 }}>
             ⏰ {formatTime(order.pickup_at)}
