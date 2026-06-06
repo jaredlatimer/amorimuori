@@ -55,9 +55,10 @@ export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "link">("cash");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ code: string; pickup_at: string; total_cents: number } | null>(null);
+  const [result, setResult] = useState<{ code: string; pickup_at: string; total_cents: number; payment: string; paymentUrl?: string } | null>(null);
 
   const categories = [...new Set(pizzas.map(p => p.category))];
   const totalPizzas = Object.values(qty).reduce((s, q) => s + q, 0);
@@ -93,6 +94,7 @@ export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining
           serviceNightId: serviceNight.id,
           quantities: qty,
           name, phone, email: email || undefined,
+          paymentMethod,
         }),
       });
       const json = await res.json();
@@ -115,9 +117,9 @@ export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining
     return (
       <div style={{ paddingTop: 40, maxWidth: 480 }}>
         <div style={{ background: "#2F7D4F22", border: "1px solid #2F7D4F55", borderRadius: 20, padding: "40px 28px", textAlign: "center" }}>
-          <div style={{ fontSize: 44, marginBottom: 12 }}>✓</div>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>{result.payment === "cash" ? "💵" : "🔗"}</div>
           <h2 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 16px", color: "#F8EAD5" }}>
-            Order placed
+            {result.payment === "cash" ? "Order placed — cash" : "Payment link sent"}
           </h2>
           <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: 6, color: "#2F7D4F", margin: "0 0 8px", fontFamily: "var(--font-fraunces), serif" }}>
             #{result.code}
@@ -125,9 +127,24 @@ export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining
           <div style={{ fontSize: 22, fontWeight: 700, color: "#F8EAD5cc", marginBottom: 6 }}>
             Pickup at {formatPickup(result.pickup_at)}
           </div>
-          <div style={{ fontSize: 15, color: "#F8EAD566", marginBottom: 32 }}>
+          <div style={{ fontSize: 15, color: "#F8EAD566", marginBottom: result.paymentUrl ? 20 : 32 }}>
             {fmt(result.total_cents)} · {name}
           </div>
+          {result.paymentUrl && (
+            <div style={{ marginBottom: 28 }}>
+              <p style={{ fontSize: 13, color: "#F8EAD566", marginBottom: 10 }}>
+                Link sent via SMS{email ? " & email" : ""}. You can also share it directly:
+              </p>
+              <a
+                href={result.paymentUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: "inline-block", background: "#C9A22722", border: "1px solid #C9A22766", color: "#C9A227", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 700, textDecoration: "none", wordBreak: "break-all" }}
+              >
+                Open payment link ↗
+              </a>
+            </div>
+          )}
           <button
             onClick={reset}
             style={{ background: "#2F7D4F", border: "none", color: "#F8EAD5", borderRadius: 12, padding: "16px 40px", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
@@ -277,6 +294,32 @@ export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining
             />
           </div>
 
+          {/* Payment method toggle */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {(["cash", "link"] as const).map((method) => (
+              <button
+                key={method}
+                type="button"
+                onClick={() => setPaymentMethod(method)}
+                style={{
+                  flex: 1, padding: "12px", borderRadius: 12, fontSize: 15, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif",
+                  background: paymentMethod === method ? "#F8EAD5" : "transparent",
+                  color: paymentMethod === method ? "#484D52" : "#F8EAD566",
+                  border: `1.5px solid ${paymentMethod === method ? "#F8EAD5" : "#F8EAD520"}`,
+                }}
+              >
+                {method === "cash" ? "💵 Cash" : "🔗 Payment Link"}
+              </button>
+            ))}
+          </div>
+
+          {paymentMethod === "link" && !email && (
+            <p style={{ fontSize: 13, color: "#C9A227", marginBottom: 12 }}>
+              Add an email above to also send the link by email.
+            </p>
+          )}
+
           {error && (
             <p style={{ fontSize: 14, color: "#E05555", marginBottom: 12, lineHeight: 1.4 }}>{error}</p>
           )}
@@ -297,7 +340,7 @@ export function WalkInClient({ serviceNight, pizzas, availability, poolRemaining
               fontFamily: "var(--font-archivo), sans-serif",
             }}
           >
-            {submitting ? "Placing order…" : `Place order · ${fmt(subtotal)}`}
+            {submitting ? "Placing order…" : paymentMethod === "cash" ? `Place order · ${fmt(subtotal)} cash` : `Send payment link · ${fmt(subtotal)}`}
           </button>
         </div>
       )}

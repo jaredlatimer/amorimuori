@@ -197,6 +197,37 @@ export interface AdminOrderNotificationData {
   items: { pizza_name: string; quantity: number }[];
 }
 
+export interface PaymentLinkEmailData {
+  to: string;
+  name: string;
+  code: string;
+  paymentUrl: string;
+  pickupAt: string;
+  totalCents: number;
+}
+
+export async function sendPaymentLinkEmail(data: PaymentLinkEmailData) {
+  if (!data.to) return;
+  const { to, name, code, paymentUrl, pickupAt, totalCents } = data;
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Your Amori Muori order ${code} — complete payment`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="color:#2F7D4F">Hi ${name}!</h2>
+        <p>Your Amori Muori order <strong>${code}</strong> has been created for pickup at <strong>${formatPickup(pickupAt)}</strong>.</p>
+        <p>Total: <strong>${fmt(totalCents)}</strong></p>
+        <p>Complete your payment using the link below:</p>
+        <a href="${paymentUrl}" style="display:inline-block;background:#2F7D4F;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;margin:16px 0">
+          Pay Now →
+        </a>
+        <p style="color:#888;font-size:13px">This link expires at your pickup time. Once paid, you'll receive a confirmation with the pickup address.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendAdminOrderNotification(data: AdminOrderNotificationData) {
   const adminEmail = process.env.ADMIN_EMAIL;
   if (!adminEmail) return;

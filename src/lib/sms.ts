@@ -23,6 +23,16 @@ export async function sendOrderInOven(phone: string, code: string, etaMinutes: n
   });
 }
 
+export async function sendPaymentLink(phone: string, name: string, code: string, url: string) {
+  const client = getClient();
+  if (!client || !process.env.TWILIO_PHONE_NUMBER) return;
+  await client.messages.create({
+    from: process.env.TWILIO_PHONE_NUMBER,
+    to: toE164(phone),
+    body: `Hi ${name}! Your Amori Muori order ${code} is ready to pay. Complete payment here: ${url}`,
+  });
+}
+
 export async function sendOrderReady(phone: string, code: string) {
   const client = getClient();
   if (!client || !process.env.TWILIO_PHONE_NUMBER) return;

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { sendPaymentLink } from "@/lib/sms";
+import { sendPaymentLinkEmail } from "@/lib/email";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const ET_OFFSET = "-04:00";
 
@@ -22,12 +27,13 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => null);
-  const { serviceNightId, quantities, name, phone, email } = (body ?? {}) as {
+  const { serviceNightId, quantities, name, phone, email, paymentMethod } = (body ?? {}) as {
     serviceNightId?: string;
     quantities?: Record<string, number>;
     name?: string;
     phone?: string;
     email?: string;
+    paymentMethod?: "cash" | "link";
   };
 
   if (!serviceNightId || !quantities || !name?.trim() || !phone?.trim()) {
@@ -153,7 +159,9 @@ export async function POST(request: Request) {
     if (!existing) break;
   }
 
-  // Insert order — status "new" immediately (no Stripe)
+  const isLink = paymentMethod === "link";
+
+  // Insert order
   const { data: order, error: orderError } = await service
     .from("orders")
     .insert({
@@ -163,7 +171,7 @@ export async function POST(request: Request) {
       customer_phone: phone.trim(),
       customer_email: email?.trim() ?? "",
       pickup_at: pickupSlot,
-      status: "new",
+      status: isLink ? "pending_payment" : "new",
       subtotal_cents: subtotalCents,
       tip_cents: 0,
       total_cents: subtotalCents,
@@ -194,5 +202,51 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to save order items" }, { status: 500 });
   }
 
-  return NextResponse.json({ code, pickup_at: pickupSlot, total_cents: subtotalCents });
+  // Cash — done
+  if (!isLink) {
+    return NextResponse.json({ code, pickup_at: pickupSlot, total_cents: subtotalCents, payment: "cash" });
+  }
+
+  // Payment link — create Stripe Checkout Session
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://amorimuori.com";
+  let paymentUrl = "";
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      client_reference_id: order.id,
+      customer_email: email?.trim() || undefined,
+      line_items: lineItems.map(({ pizza, qty }) => ({
+        price_data: {
+          currency: "usd",
+          unit_amount: pizza.price_cents,
+          product_data: { name: pizza.name },
+        },
+        quantity: qty,
+      })),
+      payment_method_types: ["card"],
+      success_url: `${appUrl}/order/confirmation?code=${code}`,
+      cancel_url: `${appUrl}/`,
+      expires_at: Math.floor(new Date(pickupSlot).getTime() / 1000),
+      metadata: { order_id: order.id, order_code: code, walk_in: "true" },
+    });
+    paymentUrl = session.url ?? "";
+
+    // Store the PaymentIntent ID — existing payment_intent.succeeded webhook handles confirmation
+    if (session.payment_intent) {
+      await service.from("orders").update({ stripe_payment_intent_id: session.payment_intent as string }).eq("id", order.id);
+    }
+  } catch (stripeErr) {
+    console.error("Stripe Checkout Session error:", stripeErr);
+    await service.from("orders").delete().eq("id", order.id);
+    return NextResponse.json({ error: "Payment setup failed" }, { status: 500 });
+  }
+
+  // Send payment link via SMS + email (both no-op gracefully if not configured)
+  const customerName = name.trim();
+  await sendPaymentLink(phone.trim(), customerName, code, paymentUrl).catch(() => {});
+  if (email?.trim()) {
+    await sendPaymentLinkEmail({ to: email.trim(), name: customerName, code, paymentUrl, pickupAt: pickupSlot, totalCents: subtotalCents }).catch(() => {});
+  }
+
+  return NextResponse.json({ code, pickup_at: pickupSlot, total_cents: subtotalCents, payment: "link", paymentUrl });
 }
