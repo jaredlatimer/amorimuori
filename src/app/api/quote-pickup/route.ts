@@ -103,15 +103,19 @@ export async function POST(request: Request) {
     );
   }
 
-  // Pizzas queued ahead = sum of quantities on new/making orders for this night
+  // Pizzas queued ahead = confirmed orders actively in the bake queue
   const { data: activeOrders } = await supabase
     .from("orders")
-    .select("id")
+    .select("id, pickup_at")
     .eq("service_night_id", serviceNightId)
     .in("status", ["new", "making"]);
 
   let queuedAhead = 0;
-  const orderIds = ((activeOrders ?? []) as { id: string }[]).map((o) => o.id);
+  const takenSlots = new Set<string>();
+  const orderIds = ((activeOrders ?? []) as { id: string; pickup_at: string }[]).map((o) => {
+    if (o.pickup_at) takenSlots.add(new Date(o.pickup_at).toISOString());
+    return o.id;
+  });
 
   if (orderIds.length > 0) {
     const { data: items } = await supabase
@@ -125,6 +129,32 @@ export async function POST(request: Request) {
     );
   }
 
+  // Also mark pickup slots from pre-service confirmed orders as taken
+  // (ready/picked_up are done baking but their slots should not be reoffered)
+  const { data: confirmedOrders } = await supabase
+    .from("orders")
+    .select("pickup_at")
+    .eq("service_night_id", serviceNightId)
+    .in("status", ["new", "making", "ready", "picked_up"]);
+
+  ((confirmedOrders ?? []) as { pickup_at: string }[]).forEach((o) => {
+    if (o.pickup_at) takenSlots.add(new Date(o.pickup_at).toISOString());
+  });
+
+  // Lock slots from pending_payment orders placed in the last 30 minutes —
+  // these are customers actively in checkout and should be treated as reserved.
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: recentPending } = await supabase
+    .from("orders")
+    .select("pickup_at")
+    .eq("service_night_id", serviceNightId)
+    .eq("status", "pending_payment")
+    .gte("placed_at", thirtyMinutesAgo);
+
+  ((recentPending ?? []) as { pickup_at: string }[]).forEach((o) => {
+    if (o.pickup_at) takenSlots.add(new Date(o.pickup_at).toISOString());
+  });
+
   // Bake minutes from settings
   const { data: rawSettings } = await supabase
     .from("settings")
@@ -133,7 +163,7 @@ export async function POST(request: Request) {
     .single();
 
   const bakeMinutes =
-    (rawSettings as { bake_minutes: number } | null)?.bake_minutes ?? 4;
+    (rawSettings as { bake_minutes: number } | null)?.bake_minutes ?? 5;
 
   // Dev: add simulated queue size from cookie
   if (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_DEV_TOOLS === "1") {
@@ -152,16 +182,19 @@ export async function POST(request: Request) {
   const earliestSlotMs = roundUpToNearest5(readyMs);
   const firstSlotMs = Math.max(earliestSlotMs, serviceStartMs);
 
-  // Generate slots: 15-min increments up to last pickup, max 12
+  // Generate slots: 5-min increments up to last pickup, skip taken slots, max 12
   const slots: string[] = [];
-  const fifteen = 15 * 60_000;
+  const five = 5 * 60_000;
 
   for (
     let t = firstSlotMs;
     t <= lastPickupMs && slots.length < 12;
-    t += fifteen
+    t += five
   ) {
-    slots.push(new Date(t).toISOString());
+    const iso = new Date(t).toISOString();
+    if (!takenSlots.has(iso)) {
+      slots.push(iso);
+    }
   }
 
   return NextResponse.json({ slots });

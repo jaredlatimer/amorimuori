@@ -168,28 +168,97 @@ export async function POST(request: Request) {
       ).toISOString()
     : new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-  // ── Insert pending_payment order ──────────────────────────────────────────────
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      service_night_id: isDevMock ? null : serviceNightId,
-      code,
-      customer_name: name,
-      customer_phone: phone,
-      customer_email: email,
-      pickup_at: pickupSlot,
-      status: "pending_payment",
-      subtotal_cents: subtotalCents,
-      tip_cents: tipAmt,
-      total_cents: totalCents,
-      cancellable_until: cancellableUntil,
-    })
-    .select("id")
-    .single();
+  // ── Slot conflict check ───────────────────────────────────────────────────────
+  // Enforce the race: if another order already holds this pickup slot, reject.
+  if (!isDevMock) {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: slotConflict } = await supabase
+      .from("orders")
+      .select("id, customer_email")
+      .eq("service_night_id", serviceNightId)
+      .eq("pickup_at", pickupSlot)
+      .or(
+        `status.in.(new,making,ready,picked_up),and(status.eq.pending_payment,placed_at.gte.${thirtyMinutesAgo})`
+      )
+      .maybeSingle();
 
-  if (orderError || !order) {
-    console.error("Order insert error:", orderError);
-    return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+    if (slotConflict && (slotConflict as { id: string; customer_email: string }).customer_email !== email) {
+      return NextResponse.json(
+        { error: "That pickup time was just taken. Please go back and choose a different slot.", slotTaken: true },
+        { status: 409 }
+      );
+    }
+  }
+
+  // ── Reuse or create order ─────────────────────────────────────────────────────
+  // If the customer already has a pending_payment order for this service night,
+  // update it in place rather than creating a duplicate.
+  let order: { id: string };
+  let existingPiId: string | null = null;
+  let isReused = false;
+
+  const { data: existingOrder } = isDevMock
+    ? { data: null }
+    : await supabase
+        .from("orders")
+        .select("id, code, stripe_payment_intent_id")
+        .eq("service_night_id", serviceNightId)
+        .eq("customer_email", email)
+        .eq("status", "pending_payment")
+        .maybeSingle();
+
+  if (existingOrder) {
+    const existing = existingOrder as { id: string; code: string; stripe_payment_intent_id: string | null };
+    existingPiId = existing.stripe_payment_intent_id;
+    code = existing.code;
+    isReused = true;
+
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({
+        customer_name: name,
+        customer_phone: phone,
+        pickup_at: pickupSlot,
+        subtotal_cents: subtotalCents,
+        tip_cents: tipAmt,
+        total_cents: totalCents,
+        cancellable_until: cancellableUntil,
+        stripe_payment_intent_id: null,
+      })
+      .eq("id", existing.id);
+
+    if (updateError) {
+      console.error("Order update error:", updateError);
+      return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+    }
+
+    await supabase.from("order_items").delete().eq("order_id", existing.id);
+    order = { id: existing.id };
+  } else {
+    const { data: insertedOrder, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        service_night_id: isDevMock ? null : serviceNightId,
+        code,
+        customer_name: name,
+        customer_phone: phone,
+        customer_email: email,
+        pickup_at: pickupSlot,
+        status: "pending_payment",
+        subtotal_cents: subtotalCents,
+        tip_cents: tipAmt,
+        total_cents: totalCents,
+        cancellable_until: cancellableUntil,
+      })
+      .select("id")
+      .single();
+
+    if (orderError || !insertedOrder) {
+      console.error("Order insert error:", orderError);
+      return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+    }
+
+    order = insertedOrder;
   }
 
   // ── Insert order items ────────────────────────────────────────────────────────
@@ -205,8 +274,17 @@ export async function POST(request: Request) {
 
   if (itemsError) {
     console.error("Order items error:", itemsError);
-    await supabase.from("orders").delete().eq("id", order.id);
+    if (!isReused) await supabase.from("orders").delete().eq("id", order.id);
     return NextResponse.json({ error: "Failed to save order items" }, { status: 500 });
+  }
+
+  // Cancel the previous Stripe PaymentIntent if we're reusing an order
+  if (existingPiId) {
+    try {
+      await stripe.paymentIntents.cancel(existingPiId);
+    } catch {
+      // Best-effort — don't block checkout if cancel fails
+    }
   }
 
   // ── Create Stripe PaymentIntent ───────────────────────────────────────────────
@@ -226,7 +304,7 @@ export async function POST(request: Request) {
     });
   } catch (stripeErr) {
     console.error("Stripe PaymentIntent error:", stripeErr);
-    await supabase.from("orders").delete().eq("id", order.id);
+    if (!isReused) await supabase.from("orders").delete().eq("id", order.id);
     return NextResponse.json({ error: "Payment setup failed" }, { status: 500 });
   }
 

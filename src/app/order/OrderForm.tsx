@@ -160,10 +160,20 @@ export function OrderForm({
       });
       const data = await res.json();
       if (!res.ok || !data.clientSecret) {
-        setCheckout({
-          stage: "error",
-          message: data.error ?? "Something went wrong. Please try again.",
-        });
+        if (data.slotTaken) {
+          // Slot was claimed by someone else — kick back to slot selection
+          setSlot("");
+          setSlots([]);
+          setCheckout({
+            stage: "error",
+            message: data.error,
+          });
+        } else {
+          setCheckout({
+            stage: "error",
+            message: data.error ?? "Something went wrong. Please try again.",
+          });
+        }
         return;
       }
       setCheckout({
