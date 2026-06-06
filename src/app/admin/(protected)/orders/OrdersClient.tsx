@@ -103,6 +103,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   const [updating, setUpdating] = useState<string | null>(null);
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
   const [arrivedIds, setArrivedIds] = useState<Set<string>>(new Set());
+  const [pizzaStates, setPizzaStates] = useState<Map<string, string>>(new Map());
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
   const [toasts, setToasts] = useState<{ id: string; message: string; color: string; exiting: boolean }[]>([]);
 
@@ -205,6 +206,13 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
           addToast(`🚶 ${payload.customerName} has arrived`, "#C9A227");
         }
       )
+      .on(
+        "broadcast",
+        { event: "pizza_state" },
+        ({ payload }: { payload: { key: string; stage: string } }) => {
+          setPizzaStates((prev) => new Map(prev).set(payload.key, payload.stage));
+        }
+      )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -243,14 +251,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
     .reduce((s, i) => s + i.quantity, 0);
   const totalRevenue = activeOrders.reduce((s, o) => s + o.total_cents, 0);
 
-  const grouped = {
-    new: orders.filter((o) => o.status === "new"),
-    making: orders.filter((o) => o.status === "making"),
-    ready: orders.filter((o) => o.status === "ready"),
-    done: orders.filter(
-      (o) => o.status === "picked_up" || o.status === "cancelled" || o.status === "refunded"
-    ),
-  };
+  const sortedOrders = [...orders].sort((a, b) => new Date(a.pickup_at).getTime() - new Date(b.pickup_at).getTime());
 
   return (
     <div style={{ paddingTop: 32 }}>
@@ -351,54 +352,21 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
           No orders yet tonight.
         </p>
       ) : (
-        <div style={{ display: "grid", gap: 32 }}>
-          {(
-            [
-              { key: "new", label: "Queued" },
-              { key: "making", label: "In the oven" },
-              { key: "ready", label: "Ready for pickup" },
-              { key: "done", label: "Done" },
-            ] as const
-          ).map(({ key, label }) => {
-            const group = grouped[key];
-            if (group.length === 0) return null;
-            return (
-              <section key={key}>
-                <h2
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    letterSpacing: 1.5,
-                    textTransform: "uppercase",
-                    color: "#F8EAD555",
-                    margin: "0 0 12px",
-                  }}
-                >
-                  {label} · {group.length}
-                </h2>
-                <div style={{ display: "grid", gap: 12 }}>
-                  {group.map((order) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      items={items.filter((i) => i.order_id === order.id)}
-                      updating={updating === order.id}
-                      glowing={glowingIds.has(order.id)}
-                      arrived={arrivedIds.has(order.id)}
-                      serviceNight={serviceNight}
-                      onAdvance={() => {
-                        const next = NEXT_STATUS[order.status];
-                        if (next) updateStatus(order.id, next);
-                      }}
-                      onCancel={() => updateStatus(order.id, "cancelled")}
-                      onRestore={() => updateStatus(order.id, "new")}
-                      onArrived={() => markArrived(order)}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+        <div style={{ display: "grid", gap: 12 }}>
+          {sortedOrders.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              items={items.filter((i) => i.order_id === order.id)}
+              updating={updating === order.id}
+              glowing={glowingIds.has(order.id)}
+              arrived={arrivedIds.has(order.id)}
+              pizzaStates={pizzaStates}
+              onCancel={() => updateStatus(order.id, "cancelled")}
+              onRestore={() => updateStatus(order.id, "new")}
+              onArrived={() => markArrived(order)}
+            />
+          ))}
         </div>
       )}
 
@@ -428,14 +396,24 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   );
 }
 
+type PizzaStage = "al_banco" | "al_forno" | "boxed";
+const PIZZA_STAGE_LABELS: Record<PizzaStage, { label: string; color: string; bg: string }> = {
+  al_banco: { label: "Al Banco", color: "#C9A227", bg: "#C9A22722" },
+  al_forno: { label: "Al Forno", color: "#3D7BC9", bg: "#3D7BC922" },
+  boxed:    { label: "Boxed ✓", color: "#2F7D4F", bg: "#2F7D4F22" },
+};
+
+function pizzaKey(orderId: string, pizzaName: string, index: number) {
+  return `${orderId}::${pizzaName}::${index}`;
+}
+
 function OrderCard({
   order,
   items,
   updating,
   glowing,
   arrived,
-  serviceNight,
-  onAdvance,
+  pizzaStates,
   onCancel,
   onRestore,
   onArrived,
@@ -445,8 +423,7 @@ function OrderCard({
   updating: boolean;
   glowing: boolean;
   arrived: boolean;
-  serviceNight: ServiceNight;
-  onAdvance: () => void;
+  pizzaStates: Map<string, string>;
   onCancel: () => void;
   onRestore: () => void;
   onArrived: () => void;
@@ -474,12 +451,9 @@ function OrderCard({
   }, [glowing]);
 
   const sc = STATUS_COLORS[order.status];
-  const nextLabel = NEXT_LABEL[order.status];
   const canCancel = order.status === "new" || order.status === "making";
   const isCancelled = order.status === "cancelled";
   const terminal = order.status === "picked_up" || order.status === "refunded";
-  const serviceStartMs = new Date(`${serviceNight.service_date}T${serviceNight.service_start.slice(0, 5)}:00-04:00`).getTime();
-  const serviceStarted = Date.now() >= serviceStartMs;
 
   const btnBase: React.CSSProperties = {
     borderRadius: 8, padding: "7px 14px", fontSize: 13,
@@ -509,12 +483,7 @@ function OrderCard({
       )}
       {confirmAction === null && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {nextLabel && (
-            <button onClick={onAdvance} disabled={updating} style={{ ...btnBase, background: updating ? "#2F7D4F55" : "#2F7D4F", color: "#F8EAD5", fontWeight: 700 }}>
-              {updating ? "…" : nextLabel}
-            </button>
-          )}
-          {(order.status === "new" || order.status === "making" || order.status === "ready") && !arrived && serviceStarted && (
+          {(order.status === "new" || order.status === "making" || order.status === "ready") && !arrived && (
             <button onClick={onArrived} style={{ ...btnBase, background: "#C9A22722", border: "1px solid #C9A22766", color: "#C9A227", fontWeight: 700 }}>
               Customer Arrived
             </button>
@@ -563,12 +532,26 @@ function OrderCard({
           <div style={{ marginTop: 3, fontSize: 13, color: "#F8EAD555" }}>
             {order.code} · {order.customer_phone}
           </div>
-          <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
-            {items.map((item, i) => (
-              <span key={i} style={{ fontSize: 14, color: "#F8EAD5" }}>
-                <strong>{item.quantity}×</strong> {item.pizza_name}
-              </span>
-            ))}
+          <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
+            {items.flatMap((item) =>
+              Array.from({ length: item.quantity }, (_, idx) => {
+                const key = pizzaKey(order.id, item.pizza_name, idx);
+                const stage = pizzaStates.get(key) as PizzaStage | undefined;
+                const stageInfo = stage ? PIZZA_STAGE_LABELS[stage] : null;
+                return (
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14, color: "#F8EAD5" }}>
+                      {item.pizza_name}
+                    </span>
+                    {stageInfo && (
+                      <span style={{ fontSize: 11, fontWeight: 700, background: stageInfo.bg, color: stageInfo.color, borderRadius: 100, padding: "2px 8px", letterSpacing: 0.4 }}>
+                        {stageInfo.label}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
           {/* Price + actions on mobile (below items) */}
           <div className="order-card-mobile-actions">

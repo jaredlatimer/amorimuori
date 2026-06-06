@@ -110,6 +110,12 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
 
   async function setPizzaStageAndAdvance(order: Order, key: string, stage: PizzaState) {
     setPizzaStates((prev) => new Map(prev).set(key, stage));
+    // Broadcast to Orders page
+    await supabase.channel(`orders-admin-${serviceNightId}`).send({
+      type: "broadcast",
+      event: "pizza_state",
+      payload: { key, stage },
+    });
     // First pizza going al banco → auto-start the order
     if (stage === "al_banco" && order.status === "new") {
       await advance(order);
