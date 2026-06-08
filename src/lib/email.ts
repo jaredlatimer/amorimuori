@@ -47,10 +47,12 @@ export interface ConfirmationEmailData {
   tipCents: number;
   totalCents: number;
   items: { pizza_name: string; quantity: number; unit_price_cents: number }[];
+  introCopy?: string;
+  subject?: string;
 }
 
 export async function sendConfirmationEmail(data: ConfirmationEmailData) {
-  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, items } = data;
+  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, items, introCopy, subject } = data;
 
   const itemRows = items
     .map(
@@ -96,9 +98,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
               <h1 style="margin:8px 0 0;font-size:36px;font-weight:900;color:#F8EAD5;line-height:1.1;">
                 Thank you!
               </h1>
-              <p style="margin:8px 0 0;font-size:16px;color:#F8EAD5aa;font-family:Arial,sans-serif;">
-                Your order is confirmed, ${name}.
-              </p>
+              ${introCopy ? `<p style="margin:14px 0 0;font-size:16px;color:#F8EAD5cc;font-family:Arial,sans-serif;line-height:1.6;">${introCopy}</p>` : `<p style="margin:8px 0 0;font-size:16px;color:#F8EAD5aa;font-family:Arial,sans-serif;">Your order is confirmed, ${name}.</p>`}
             </td>
           </tr>
 
@@ -181,7 +181,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
   await resend.emails.send({
     from: FROM,
     to,
-    subject: `Order ${code} confirmed — see you tonight!`,
+    subject: subject ?? `Order ${code} confirmed — see you tonight!`,
     html,
   });
 }
@@ -225,6 +225,55 @@ export async function sendPaymentLinkEmail(data: PaymentLinkEmailData) {
         <p style="color:#888;font-size:13px">This link expires at your pickup time. Once paid, you'll receive a confirmation with the pickup address.</p>
       </div>
     `,
+  });
+}
+
+export interface PostPickupEmailData {
+  to: string;
+  name: string;
+  code: string;
+  introCopy: string;
+  subject: string;
+}
+
+export async function sendPostPickupEmail(data: PostPickupEmailData) {
+  const { to, name, introCopy, subject } = data;
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject,
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
+<body style="margin:0;padding:0;background:#484D52;font-family:Georgia,serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#484D52;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:480px;">
+        <tr>
+          <td style="background:#F8EAD5;border-radius:16px;padding:32px 28px;">
+            <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#484D5266;font-family:Arial,sans-serif;">Amori Muori</p>
+            <p style="margin:16px 0;font-size:16px;color:#484D52;line-height:1.7;font-family:Arial,sans-serif;">${introCopy}</p>
+            <hr style="border:none;border-top:1px solid #484D5215;margin:20px 0;" />
+            <p style="margin:0;font-size:15px;color:#484D52;line-height:1.7;font-family:Arial,sans-serif;">
+              Thanks for coming out. If you enjoyed it, share a photo and tag us —<br />
+              <strong>@amorimuori</strong> on Instagram.
+            </p>
+            <p style="margin:16px 0 0;font-size:15px;color:#484D52;font-family:Arial,sans-serif;">We'd love to see it.</p>
+            <p style="margin:24px 0 0;font-size:15px;color:#484D5299;font-family:Arial,sans-serif;">— Amori Muori</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 0;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#F8EAD544;font-family:Arial,sans-serif;">
+              You received this because you placed an order with Amori Muori. Hi, ${name}.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
   });
 }
 

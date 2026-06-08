@@ -48,10 +48,15 @@ export async function POST(request: Request) {
     status: OrderStatus;
   };
 
-  // Update the status
+  // Update the status — record picked_up_at timestamp when marking picked up
+  const updatePayload: Record<string, unknown> = { status };
+  if (status === "picked_up") {
+    updatePayload.picked_up_at = new Date().toISOString();
+  }
+
   const { error: updateErr } = await service
     .from("orders")
-    .update({ status })
+    .update(updatePayload)
     .eq("id", orderId);
 
   if (updateErr) {

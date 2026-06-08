@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendConfirmationEmail, sendAdminOrderNotification } from "@/lib/email";
+import { getCustomerHistory } from "@/lib/customer-history";
+import { generateConfirmationCopy, SUBJECT_LINES } from "@/lib/confirmation-copy";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -78,6 +80,24 @@ export async function POST(request: Request) {
 
     const typedItems = (items ?? []) as { pizza_name: string; quantity: number; unit_price_cents: number }[];
 
+    const pizzaList = typedItems
+      .map((i) => `${i.quantity}× ${i.pizza_name}`)
+      .join(", ");
+
+    const pickupTime = new Date(o.pickup_at).toLocaleTimeString("en-US", {
+      hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+    });
+
+    // Generate segmented intro copy + send confirmation email in parallel
+    const [history, confirmationCopy] = await (async () => {
+      const h = await getCustomerHistory(o.customer_email, o.id);
+      const copy = await generateConfirmationCopy(h, pizzaList, pickupTime);
+      return [h, copy] as const;
+    })();
+
+    // Store generated copy on order (best-effort)
+    await supabase.from("orders").update({ confirmation_copy: confirmationCopy }).eq("id", o.id);
+
     // Send confirmation email to customer
     try {
       await sendConfirmationEmail({
@@ -89,6 +109,8 @@ export async function POST(request: Request) {
         tipCents: o.tip_cents,
         totalCents: o.total_cents,
         items: typedItems,
+        introCopy: confirmationCopy,
+        subject: SUBJECT_LINES[history.segment],
       });
     } catch (emailErr) {
       console.error("Confirmation email failed:", emailErr);
