@@ -279,7 +279,7 @@ export function CostsClient({ pricedIngredients: initial, allIngredientNames, pi
                     </div>
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: "#F8EAD555", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Margin</div>
-                      <div className="font-display" style={{ fontSize: 22, fontWeight: 900, color: cost > 0 ? (margin >= 0 ? "#2F7D4F" : "#60403F") : "#F8EAD533" }}>
+                      <div className="font-display" style={{ fontSize: 22, fontWeight: 900, color: cost > 0 ? (margin >= 0 ? "#2F7D4F" : "#F8EAD5") : "#F8EAD533" }}>
                         {cost > 0 ? fmt(Math.round(margin)) : "—"}
                       </div>
                       {cost > 0 && <div style={{ fontSize: 11, color: "#F8EAD566" }}>{marginPct}%</div>}
@@ -429,7 +429,7 @@ function NightSummary({
           { label: "Revenue", value: fmt(revenue), color: "#F8EAD5" },
           { label: "Ingredient Cost", value: fmt(ingredientCost), color: "#C9A227" },
           { label: "Other Expenses", value: fmt(otherExpenses), color: "#C9A227" },
-          { label: "Gross Margin", value: `${fmt(grossMargin)} (${marginPct}%)`, color: grossMargin >= 0 ? "#2F7D4F" : "#60403F" },
+          { label: "Gross Margin", value: `${fmt(grossMargin)} (${marginPct}%)`, color: grossMargin >= 0 ? "#2F7D4F" : "#F8EAD5" },
         ].map((s) => (
           <div key={s.label} style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 14, padding: "16px 18px" }}>
             <div style={sectionLabel}>{s.label}</div>
@@ -495,7 +495,7 @@ function NightSummary({
                     <td style={{ padding: "10px 8px", color: "#F8EAD5aa", textAlign: "right" }}>{sold}</td>
                     <td style={{ padding: "10px 8px", color: "#F8EAD5", textAlign: "right" }}>{fmt(rev)}</td>
                     <td style={{ padding: "10px 8px", color: "#C9A227", textAlign: "right" }}>{cost > 0 ? fmt(Math.round(cost)) : "—"}</td>
-                    <td style={{ padding: "10px 0", textAlign: "right", fontWeight: 700, color: cost > 0 ? (margin >= 0 ? "#2F7D4F" : "#60403F") : "#F8EAD533" }}>
+                    <td style={{ padding: "10px 0", textAlign: "right", fontWeight: 700, color: cost > 0 ? (margin >= 0 ? "#2F7D4F" : "#F8EAD5") : "#F8EAD533" }}>
                       {cost > 0 ? fmt(Math.round(margin)) : "—"}
                     </td>
                   </tr>
