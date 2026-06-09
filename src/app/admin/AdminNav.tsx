@@ -23,6 +23,7 @@ export function AdminNav() {
     { label: "Shopping", href: "/admin/shopping" },
     { label: "Inventory", href: "/admin/inventory" },
     { label: "Menu", href: "/admin/menu" },
+    { label: "Costs", href: "/admin/costs" },
     { label: "Dashboard", href: "/admin/dashboard" },
     { label: "Blast", href: "/admin/blast" },
     { label: "Settings", href: "/admin/settings" },
