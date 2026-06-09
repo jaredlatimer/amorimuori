@@ -97,8 +97,10 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
   const [blasting, setBlasting] = useState(false);
   const [blastResult, setBlastResult] = useState<{ sent?: number; error?: string } | null>(null);
 
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const fridays = getUpcomingFridays(16);
   const nightsByDate = Object.fromEntries(nights.map((n) => [n.service_date, n]));
+  const pastNights = nights.filter((n) => n.service_date < today).sort((a, b) => b.service_date.localeCompare(a.service_date));
 
   async function toggleFriday(fridayDate: string) {
     setToggling(fridayDate);
@@ -218,6 +220,26 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
               </div>
             );
           })}
+        </div>
+      </>)}
+
+      {/* ── Past Service Nights ── */}
+      {pastNights.length > 0 && card(<>
+        {sectionHead("Past Service Nights")}
+        <p style={{ fontSize: 14, color: "#F8EAD577", marginBottom: 18, marginTop: -8 }}>
+          Historical service nights. Read-only.
+        </p>
+        <div style={{ display: "grid", gap: 8 }}>
+          {pastNights.map((night) => (
+            <div key={night.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #F8EAD50a" }}>
+              <div>
+                <span style={{ fontSize: 15, color: "#F8EAD555" }}>{fmtDate(night.service_date)}</span>
+                <span style={{ fontSize: 12, color: night.is_enabled ? "#2F7D4F66" : "#F8EAD522", marginLeft: 10 }}>
+                  {night.is_enabled ? "was enabled" : "was disabled"}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </>)}
 
