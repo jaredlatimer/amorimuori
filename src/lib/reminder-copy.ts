@@ -9,11 +9,11 @@ Rules:
 - Never use exclamation points.
 - Do not invent details not present in the data provided.
 - Do not list all the pizzas — the full menu follows in the email template.
-- If there is a special this week, mention it by name with one short descriptor.
+- If there are specials this week, introduce them naturally with a brief descriptor for each (e.g. "La Stracciata with sausage and house-made stracciatella").
 - If a pizza sold out early last week, mention it once as a practical heads-up, not a hype tactic.
 - If there is a new pizza, mention it briefly.
-- If nothing notable is happening (no specials, no sellouts, no new items), write a quiet 2-sentence opener: ordering is open, slots fill through the week.
-- End on the order link call to action: "Order at [ORDER_LINK]" — use that placeholder exactly.`;
+- If nothing notable is happening (no specials, no sellouts, no new items), write a quiet 1-2 sentence opener: ordering is open, slots fill through the week.
+- Always end with this exact sentence: "Order now, reserve your pickup time and we'll have your pizza ready. Order at [ORDER_LINK]"`;
 
 export type ReminderCopyInput = {
   pizzas: {
