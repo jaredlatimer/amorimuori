@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/post-pickup-emails",
-      "schedule": "* * * * *"
+      "schedule": "0 12 * * 6"
     },
     {
       "path": "/api/cron/send-reminder",
