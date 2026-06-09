@@ -408,8 +408,11 @@ function NightSummary({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {/* Night selector */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {serviceNights.map((n) => (
+      {(() => {
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const upcoming = serviceNights.filter((n) => n.service_date >= today).reverse();
+        const past = serviceNights.filter((n) => n.service_date < today);
+        const renderNight = (n: ServiceNight) => (
           <button key={n.id} onClick={() => setSelectedNightId(n.id)} style={{
             background: selectedNightId === n.id ? "#F8EAD5" : "transparent",
             color: selectedNightId === n.id ? "#484D52" : "#F8EAD5aa",
@@ -420,8 +423,24 @@ function NightSummary({
           }}>
             {fmtDate(n.service_date)}
           </button>
-        ))}
-      </div>
+        );
+        return (
+          <div style={{ display: "grid", gap: 12 }}>
+            {upcoming.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#F8EAD544", marginBottom: 8 }}>Upcoming</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{upcoming.map(renderNight)}</div>
+              </div>
+            )}
+            {past.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#F8EAD544", marginBottom: 8 }}>Past</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{past.map(renderNight)}</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Top line */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
