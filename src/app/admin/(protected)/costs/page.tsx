@@ -17,8 +17,7 @@ export default async function CostsPage() {
     supabase
       .from("service_nights")
       .select("id, service_date, nightly_total")
-      .gte("service_date", today)
-      .order("service_date", { ascending: true })
+      .order("service_date", { ascending: false })
       .limit(10),
   ]);
 
