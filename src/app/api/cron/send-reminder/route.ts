@@ -11,6 +11,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const url = new URL(request.url);
+  const isTest = url.searchParams.get("test") === "1";
+
   const supabase = await createServiceClient();
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
@@ -35,8 +38,8 @@ export async function GET(request: Request) {
     reminder_copy: string | null;
   };
 
-  // ── Idempotency guard ─────────────────────────────────────────────────────
-  if (night.reminder_sent_at) {
+  // ── Idempotency guard (skip in test mode) ────────────────────────────────
+  if (night.reminder_sent_at && !isTest) {
     return NextResponse.json({ skipped: true, reason: "Already sent" });
   }
 
@@ -145,8 +148,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: true, reason: "No recipients" });
   }
 
-  // ── Send in batches of 50 ─────────────────────────────────────────────────
-  const emailList = Array.from(allEmails);
+  // ── Send in batches of 50 (test mode: only send to admin) ────────────────
+  const TEST_EMAIL = process.env.ADMIN_EMAIL ?? "jared@latimerart.design";
+  const emailList = isTest ? [TEST_EMAIL] : Array.from(allEmails);
   const BATCH = 50;
   let sent = 0;
 
@@ -172,11 +176,13 @@ export async function GET(request: Request) {
     sent += chunk.length;
   }
 
-  // ── Mark sent ─────────────────────────────────────────────────────────────
-  await supabase
-    .from("service_nights")
-    .update({ reminder_sent_at: new Date().toISOString() })
-    .eq("id", night.id);
+  // ── Mark sent (skip in test mode) ────────────────────────────────────────
+  if (!isTest) {
+    await supabase
+      .from("service_nights")
+      .update({ reminder_sent_at: new Date().toISOString() })
+      .eq("id", night.id);
+  }
 
-  return NextResponse.json({ sent, recipients: emailList.length });
+  return NextResponse.json({ sent, recipients: isTest ? "test only" : emailList.length });
 }
