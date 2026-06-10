@@ -138,10 +138,22 @@ export function SettingsClient({ settings: initialSettings, serviceNights: initi
         bake_minutes: settings.bake_minutes,
         nightly_pool: settings.nightly_pool,
       }).eq("id", settings.id),
-      // Propagate new pool size to all upcoming service nights
+      // Propagate pool size + service times to all upcoming service nights
       supabase.from("service_nights")
-        .update({ nightly_total: settings.nightly_pool })
+        .update({
+          nightly_total: settings.nightly_pool,
+          service_start: settings.service_start,
+          last_pickup: settings.last_pickup,
+        })
         .gte("service_date", today),
+      // Rebuild order_close_at per upcoming night (date-specific timestamp)
+      ...nights
+        .filter((n) => n.service_date >= today)
+        .map((n) =>
+          supabase.from("service_nights")
+            .update({ order_close_at: makeOrderCloseAt(n.service_date, settings) })
+            .eq("id", n.id)
+        ),
     ]);
     setSaving(false);
     setSaved(true);
