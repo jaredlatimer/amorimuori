@@ -400,7 +400,7 @@ export async function sendReminderBlast(emails: string[], fridayDate?: string): 
               </a>
 
               <p style="margin:18px 0 0;font-size:13px;color:#484D5266;font-family:Arial,sans-serif;">
-                Pickup at Ashburn Farm, VA · Starts at 6 PM
+                Pickup at Ashburn Farm, VA
               </p>
             </td>
           </tr>

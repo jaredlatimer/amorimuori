@@ -1,7 +1,38 @@
 import { getAvailability } from "@/lib/availability";
+import { createServiceClient } from "@/lib/supabase/server";
 import { LogoLockup } from "@/components/ui/Logo";
 
 export const dynamic = "force-dynamic";
+
+// "17:30:00" → "5:30 PM"
+function formatServiceStart(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+async function getServiceStart(): Promise<string> {
+  const supabase = await createServiceClient();
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+  // Next enabled service night's start time, falling back to global settings
+  const { data: night } = await supabase
+    .from("service_nights")
+    .select("service_start")
+    .eq("is_enabled", true)
+    .gte("service_date", today)
+    .order("service_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (night?.service_start) return formatServiceStart((night as { service_start: string }).service_start);
+
+  const { data: settings } = await supabase.from("settings").select("service_start").single();
+  if (settings?.service_start) return formatServiceStart((settings as { service_start: string }).service_start);
+
+  return "6:00 PM";
+}
 
 const INFO_CARDS = [
   {
@@ -23,6 +54,7 @@ const INFO_CARDS = [
 
 export default async function Home() {
   const availability = await getAvailability();
+  const serviceStart = await getServiceStart();
   const isOpen = availability.isOpen;
   const openDayName = availability.nextOpenAt
     ? new Date(availability.nextOpenAt).toLocaleDateString("en-US", { weekday: "long", timeZone: "America/New_York" })
@@ -159,7 +191,7 @@ export default async function Home() {
           Ordering opens every{" "}
           <strong style={{ color: "#F8EAD5" }}>Wednesday</strong>{" "}
           for the following Friday&apos;s service. Reserve your pickup window —
-          service starts at <strong style={{ color: "#F8EAD5" }}>6:00 PM</strong>.
+          service starts at <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
         </p>
 
         {/* CTAs */}
