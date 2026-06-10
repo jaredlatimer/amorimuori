@@ -182,15 +182,11 @@ export async function POST(request: Request) {
   const earliestSlotMs = roundUpToNearest5(readyMs);
   const firstSlotMs = Math.max(earliestSlotMs, serviceStartMs);
 
-  // Generate slots: 5-min increments up to last pickup, skip taken slots, max 12
+  // Generate slots: 5-min increments up to last pickup, skip taken slots
   const slots: string[] = [];
   const five = 5 * 60_000;
 
-  for (
-    let t = firstSlotMs;
-    t <= lastPickupMs && slots.length < 12;
-    t += five
-  ) {
+  for (let t = firstSlotMs; t <= lastPickupMs; t += five) {
     const iso = new Date(t).toISOString();
     if (!takenSlots.has(iso)) {
       slots.push(iso);
