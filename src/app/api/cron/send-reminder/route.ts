@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { generateReminderCopy } from "@/lib/reminder-copy";
-import { sendOrdersOpenEmail } from "@/lib/email";
+import { buildOrdersOpenEmailPayload } from "@/lib/email";
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
 const ORDER_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://amorimuori.com";
 
@@ -148,32 +151,34 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: true, reason: "No recipients" });
   }
 
-  // ── Send in batches of 50 (test mode: only send to admin) ────────────────
+  // ── Send via Resend batch API (test mode: only send to admin) ────────────
   const TEST_EMAIL = process.env.ADMIN_EMAIL ?? "jared@latimerart.design";
   const emailList = isTest ? [TEST_EMAIL] : Array.from(allEmails);
-  const BATCH = 50;
+  const BATCH = 100; // Resend batch limit
   let sent = 0;
+
+  const pizzaPayload = pizzas.map((p) => ({
+    name: p.name,
+    description: p.description,
+    price_cents: p.price_cents,
+    is_special: p.is_special,
+    allergens: p.allergens ?? [],
+  }));
 
   for (let i = 0; i < emailList.length; i += BATCH) {
     const chunk = emailList.slice(i, i + BATCH);
-    await Promise.all(
-      chunk.map((email) =>
-        sendOrdersOpenEmail({
-          to: email,
-          introCopy: copy,
-          serviceDate: night.service_date,
-          pizzas: pizzas.map((p) => ({
-            name: p.name,
-            description: p.description,
-            price_cents: p.price_cents,
-            is_special: p.is_special,
-            allergens: p.allergens ?? [],
-          })),
-          orderUrl: ORDER_URL,
-        }).catch((err) => console.error(`Failed to send to ${email}:`, err))
-      )
+    const payloads = chunk.map((email) =>
+      buildOrdersOpenEmailPayload({
+        to: email,
+        introCopy: copy,
+        serviceDate: night.service_date,
+        pizzas: pizzaPayload,
+        orderUrl: ORDER_URL,
+      })
     );
-    sent += chunk.length;
+    const { data, error } = await resend.batch.send(payloads);
+    if (error) console.error("Resend batch error:", error);
+    sent += data?.data?.length ?? 0;
   }
 
   // ── Mark sent (skip in test mode) ────────────────────────────────────────
