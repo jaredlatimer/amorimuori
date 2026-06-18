@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteShell } from "@/components/ui/SiteShell";
 
 export const metadata: Metadata = {
   title: "Terms of Service — Amori Muori",
@@ -6,13 +7,12 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
+    <SiteShell>
     <main
       style={{
         maxWidth: 720,
         margin: "0 auto",
         padding: "60px 24px 80px",
-        color: "#F8EAD5",
-        fontFamily: "var(--font-archivo), sans-serif",
         lineHeight: 1.7,
       }}
     >
@@ -86,6 +86,7 @@ export default function TermsPage() {
         .
       </Section>
     </main>
+    </SiteShell>
   );
 }
 
