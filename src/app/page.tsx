@@ -60,6 +60,24 @@ export default async function Home() {
     ? new Date(availability.nextOpenAt).toLocaleDateString("en-US", { weekday: "long", timeZone: "America/New_York" })
     : "Wednesday";
 
+  const serviceDate = availability.serviceNight?.service_date ?? null;
+  // "YYYY-MM-DD" → "Friday, June 20"
+  const serviceDateLabel = serviceDate
+    ? new Date(`${serviceDate}T12:00:00`).toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      })
+    : null;
+  // Two days before the service Friday → Wednesday
+  const orderingOpensLabel = serviceDate
+    ? (() => {
+        const d = new Date(`${serviceDate}T12:00:00`);
+        d.setDate(d.getDate() - 2);
+        return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+      })()
+    : null;
+
   return (
     <div
       style={{
@@ -187,11 +205,21 @@ export default async function Home() {
           }}
         >
           Fired at 900°, 60-second bake, tomato sauce and fresh mozzarella and
-          more made fresh in <strong style={{ color: "#F8EAD5" }}>Ashburn Farm</strong>.
-          Ordering opens every{" "}
-          <strong style={{ color: "#F8EAD5" }}>Wednesday</strong>{" "}
-          for the following Friday&apos;s service. Reserve your pickup window —
-          service starts at <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
+          more made fresh in <strong style={{ color: "#F8EAD5" }}>Ashburn Farm</strong>.{" "}
+          {serviceDateLabel && orderingOpensLabel ? (
+            <>
+              Next service is{" "}
+              <strong style={{ color: "#F8EAD5" }}>{serviceDateLabel}</strong>
+              {" — "}ordering opens{" "}
+              <strong style={{ color: "#F8EAD5" }}>{orderingOpensLabel}</strong>.
+            </>
+          ) : (
+            <>
+              When we&apos;re running, ordering opens the Wednesday before.
+            </>
+          )}{" "}
+          Reserve your pickup window — service starts at{" "}
+          <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
         </p>
 
         {/* CTAs */}
