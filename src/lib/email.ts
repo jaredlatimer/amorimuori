@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { createHmac } from "crypto";
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
+const resend = new Resend(process.env.RESEND_API_KEY ?? "no-key");
 
 const FROM = process.env.RESEND_FROM ?? "Amori Muori <orders@amorimuori.com>";
 
@@ -274,6 +274,60 @@ export async function sendPostPickupEmail(data: PostPickupEmailData) {
   </table>
 </body>
 </html>`,
+  });
+}
+
+export interface CateringInquiryData {
+  name: string;
+  email: string;
+  phone: string;
+  eventDate: string;
+  location: string;
+  guestCount: number;
+  eventType: string;
+  servingWindow?: string;
+  notes?: string;
+}
+
+export async function sendCateringInquiryNotification(data: CateringInquiryData) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail) return;
+
+  const eventDateFormatted = new Date(data.eventDate + "T12:00:00").toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric", year: "numeric",
+  });
+
+  const rows = [
+    ["Name", data.name],
+    ["Email", data.email],
+    ["Phone", data.phone],
+    ["Event date", eventDateFormatted],
+    ["Location", data.location],
+    ["Guests", String(data.guestCount)],
+    ["Event type", data.eventType],
+    ...(data.servingWindow ? [["Serving window", data.servingWindow]] : []),
+    ...(data.notes ? [["Notes", data.notes]] : []),
+  ]
+    .map(
+      ([label, value]) => `
+      <tr>
+        <td style="padding:6px 12px 6px 0;font-size:13px;color:#484D5299;font-family:Arial,sans-serif;white-space:nowrap;vertical-align:top;">${label}</td>
+        <td style="padding:6px 0;font-size:14px;color:#484D52;font-family:Arial,sans-serif;font-weight:600;">${value}</td>
+      </tr>`
+    )
+    .join("");
+
+  await resend.emails.send({
+    from: FROM,
+    to: adminEmail,
+    subject: `Catering inquiry — ${data.name}, ${eventDateFormatted} (${data.guestCount} guests)`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+        <h2 style="color:#2F7D4F;margin:0 0 16px;">New catering inquiry</h2>
+        <table cellpadding="0" cellspacing="0">${rows}</table>
+        <p style="margin:20px 0 0;font-size:13px;color:#888;">Reply directly to ${data.email} or call ${data.phone}.</p>
+      </div>
+    `,
   });
 }
 

@@ -277,6 +277,52 @@ export default async function Home() {
             </div>
           ))}
         </div>
+        {/* Catering */}
+        <div
+          className="rise"
+          style={{
+            marginTop: 70,
+            background: "#2F7D4F1f",
+            border: "1px solid #2F7D4F55",
+            borderRadius: 22,
+            padding: "38px 34px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 24,
+            flexWrap: "wrap",
+            animationDelay: ".45s",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <p style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "#2F7D4F", fontWeight: 700, margin: 0 }}>
+              Catering
+            </p>
+            <h2 className="font-display" style={{ fontSize: 30, fontWeight: 900, margin: "8px 0 0", lineHeight: 1.15 }}>
+              Bring the oven to your event.
+            </h2>
+            <p style={{ marginTop: 10, fontSize: 15.5, lineHeight: 1.55, color: "#F8EAD5bb", margin: "10px 0 0" }}>
+              Birthdays, block parties, weddings, corporate gatherings — fresh
+              Neapolitan pizza fired on site. Tell us about your event.
+            </p>
+          </div>
+          <a
+            href="/catering"
+            className="am-btn"
+            style={{
+              background: "#2F7D4F",
+              color: "#F8EAD5",
+              borderRadius: 100,
+              padding: "16px 32px",
+              fontSize: 16,
+              fontWeight: 700,
+              textDecoration: "none",
+              flexShrink: 0,
+            }}
+          >
+            Plan your event →
+          </a>
+        </div>
       </section>
 
       {/* Footer */}
