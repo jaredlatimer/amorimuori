@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   // Fetch the order (need phone, code, pickup_at for SMS)
   const { data: order, error: fetchErr } = await service
     .from("orders")
-    .select("id, code, customer_phone, pickup_at, status")
+    .select("id, code, customer_phone, pickup_at, status, sms_opt_in")
     .eq("id", orderId)
     .single();
 
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     customer_phone: string;
     pickup_at: string;
     status: OrderStatus;
+    sms_opt_in: boolean;
   };
 
   // Update the status — record picked_up_at timestamp when marking picked up
@@ -64,19 +65,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
   }
 
-  // Fire SMS for key transitions (fire-and-forget — don't block the response)
-  if (status === "making") {
-    const etaMinutes = Math.max(
-      1,
-      Math.ceil((new Date(typedOrder.pickup_at).getTime() - Date.now()) / 60000)
-    );
-    sendOrderInOven(typedOrder.customer_phone, typedOrder.code, etaMinutes).catch(
-      (err) => console.error("SMS (in_oven) error:", err)
-    );
-  } else if (status === "ready") {
-    sendOrderReady(typedOrder.customer_phone, typedOrder.code).catch(
-      (err) => console.error("SMS (ready) error:", err)
-    );
+  // Fire SMS for key transitions only if customer opted in (fire-and-forget)
+  if (typedOrder.sms_opt_in) {
+    if (status === "making") {
+      const etaMinutes = Math.max(
+        1,
+        Math.ceil((new Date(typedOrder.pickup_at).getTime() - Date.now()) / 60000)
+      );
+      sendOrderInOven(typedOrder.customer_phone, typedOrder.code, etaMinutes).catch(
+        (err) => console.error("SMS (in_oven) error:", err)
+      );
+    } else if (status === "ready") {
+      sendOrderReady(typedOrder.customer_phone, typedOrder.code).catch(
+        (err) => console.error("SMS (ready) error:", err)
+      );
+    }
   }
 
   return NextResponse.json({ ok: true });

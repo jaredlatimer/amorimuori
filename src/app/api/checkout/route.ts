@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email } =
+  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn } =
     body as {
       serviceNightId: string;
       quantities: Record<string, number>;
@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       name: string;
       phone: string;
       email: string;
+      smsOptIn?: boolean;
     };
 
   if (!serviceNightId || !quantities || !pickupSlot || !name || !phone || !email) {
@@ -224,6 +225,7 @@ export async function POST(request: Request) {
         total_cents: totalCents,
         cancellable_until: cancellableUntil,
         stripe_payment_intent_id: null,
+        sms_opt_in: smsOptIn ?? false,
       })
       .eq("id", existing.id);
 
@@ -249,6 +251,7 @@ export async function POST(request: Request) {
         tip_cents: tipAmt,
         total_cents: totalCents,
         cancellable_until: cancellableUntil,
+        sms_opt_in: smsOptIn ?? false,
       })
       .select("id")
       .single();

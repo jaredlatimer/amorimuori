@@ -66,6 +66,7 @@ export function OrderForm({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [smsOptIn, setSmsOptIn] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ stage: "form" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -156,6 +157,7 @@ export function OrderForm({
           name,
           phone,
           email,
+          smsOptIn,
         }),
       });
       const data = await res.json();
@@ -850,6 +852,36 @@ export function OrderForm({
                   onChange={(e) => setPhone(e.target.value)}
                   style={inputStyle}
                 />
+
+                {/* SMS opt-in consent */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    cursor: "pointer",
+                    padding: "2px 0",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={smsOptIn}
+                    onChange={(e) => setSmsOptIn(e.target.checked)}
+                    style={{ marginTop: 3, flexShrink: 0, accentColor: "#2F7D4F", width: 16, height: 16 }}
+                  />
+                  <span style={{ fontSize: 13, color: "#484D52cc", lineHeight: 1.45 }}>
+                    Text me when my order is in the kitchen and when it&apos;s ready for pickup.
+                  </span>
+                </label>
+                {smsOptIn && (
+                  <p style={{ fontSize: 11.5, color: "#484D5299", lineHeight: 1.5, margin: "0 0 2px" }}>
+                    By checking this box you agree to receive up to 2 automated text messages per order from Amori Muori regarding your order status. Msg &amp; data rates may apply. Reply STOP to opt out at any time. Reply HELP for help.{" "}
+                    <a href="/terms" target="_blank" style={{ color: "#2F7D4F" }}>Terms</a>
+                    {" · "}
+                    <a href="/privacy" target="_blank" style={{ color: "#2F7D4F" }}>Privacy Policy</a>
+                  </p>
+                )}
+
                 <input
                   required
                   type="email"
