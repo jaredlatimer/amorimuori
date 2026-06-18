@@ -27,7 +27,7 @@ export default function TermsPage() {
       </p>
 
       <Section title="Overview">
-        These terms govern your use of amorimouri.com and the Friday Night Take
+        These terms govern your use of amorimuori.com and the Friday Night Take
         ordering service operated by Amori Muori in Ashburn Farm, Ashburn, VA.
         By placing an order you agree to these terms.
       </Section>
@@ -80,8 +80,8 @@ export default function TermsPage() {
 
       <Section title="Contact">
         Questions? Email us at{" "}
-        <a href="mailto:hello@amorimouri.com" style={{ color: "#2F7D4F" }}>
-          hello@amorimouri.com
+        <a href="mailto:hello@amorimuori.com" style={{ color: "#2F7D4F" }}>
+          hello@amorimuori.com
         </a>
         .
       </Section>

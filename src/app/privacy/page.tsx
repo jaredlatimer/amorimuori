@@ -29,8 +29,8 @@ export default function PrivacyPage() {
       <Section title="Who we are">
         Amori Muori is a Neapolitan pizza business operating Friday Night Take
         pop-up dinners in Ashburn Farm, Ashburn, VA. Our website is{" "}
-        <a href="https://amorimouri.com" style={{ color: "#2F7D4F" }}>
-          amorimouri.com
+        <a href="https://amorimuori.com" style={{ color: "#2F7D4F" }}>
+          amorimuori.com
         </a>
         .
       </Section>
@@ -74,16 +74,16 @@ export default function PrivacyPage() {
       <Section title="Data retention">
         Order records are retained for accounting and tax purposes. You may
         request deletion of your personal data by emailing us at{" "}
-        <a href="mailto:hello@amorimouri.com" style={{ color: "#2F7D4F" }}>
-          hello@amorimouri.com
+        <a href="mailto:hello@amorimuori.com" style={{ color: "#2F7D4F" }}>
+          hello@amorimuori.com
         </a>
         .
       </Section>
 
       <Section title="Contact">
         Questions about this policy? Email us at{" "}
-        <a href="mailto:hello@amorimouri.com" style={{ color: "#2F7D4F" }}>
-          hello@amorimouri.com
+        <a href="mailto:hello@amorimuori.com" style={{ color: "#2F7D4F" }}>
+          hello@amorimuori.com
         </a>
         .
       </Section>
