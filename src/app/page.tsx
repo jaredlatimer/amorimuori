@@ -69,6 +69,12 @@ export default async function Home() {
         day: "numeric",
       })
     : null;
+  const serviceDateShort = serviceDate
+    ? new Date(`${serviceDate}T12:00:00`).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+      })
+    : null;
   // Two days before the service Friday → Wednesday
   const orderingOpensLabel = serviceDate
     ? (() => {
@@ -218,8 +224,9 @@ export default async function Home() {
               When we&apos;re running, ordering opens the Wednesday before.
             </>
           )}{" "}
-          Reserve your pickup window. Service starts at{" "}
-          <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
+          Reserve your pickup window. Service starts{" "}
+          {serviceDateShort && <><strong style={{ color: "#F8EAD5" }}>{serviceDateShort}</strong>{" "}</>}
+          at <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
         </p>
 
         {/* CTAs */}
