@@ -341,7 +341,11 @@ export default async function Home() {
           }}
         >
           <LogoLockup />
-          <p style={{ fontSize: 13, color: "#F8EAD533" }}>Ashburn Farm, VA</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <a href="/privacy" style={{ fontSize: 13, color: "#F8EAD533", textDecoration: "none" }}>Privacy Policy</a>
+            <a href="/terms" style={{ fontSize: 13, color: "#F8EAD533", textDecoration: "none" }}>Terms</a>
+            <p style={{ fontSize: 13, color: "#F8EAD533", margin: 0 }}>Ashburn Farm, VA</p>
+          </div>
         </div>
       </footer>
     </div>
