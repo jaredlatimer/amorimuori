@@ -209,8 +209,8 @@ export default async function Home() {
           {serviceDateLabel && orderingOpensLabel ? (
             <>
               Next service is{" "}
-              <strong style={{ color: "#F8EAD5" }}>{serviceDateLabel}</strong>
-              {" — "}ordering opens{" "}
+              <strong style={{ color: "#F8EAD5" }}>{serviceDateLabel}</strong>.{" "}
+              Ordering opens{" "}
               <strong style={{ color: "#F8EAD5" }}>{orderingOpensLabel}</strong>.
             </>
           ) : (
@@ -218,7 +218,7 @@ export default async function Home() {
               When we&apos;re running, ordering opens the Wednesday before.
             </>
           )}{" "}
-          Reserve your pickup window — service starts at{" "}
+          Reserve your pickup window. Service starts at{" "}
           <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
         </p>
 
