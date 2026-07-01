@@ -49,7 +49,7 @@ export default async function OrdersPage({
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at"
+      "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at, arrived_at"
     )
     .eq("service_night_id", night.id)
     .neq("status", "pending_payment")

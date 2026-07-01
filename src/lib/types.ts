@@ -66,6 +66,7 @@ export interface Order {
   stripe_payment_intent_id: string | null;
   placed_at: string;
   cancellable_until: string;
+  arrived_at: string | null;
 }
 
 export interface OrderItem {

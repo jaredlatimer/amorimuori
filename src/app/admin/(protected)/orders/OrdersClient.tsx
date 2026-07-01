@@ -23,6 +23,7 @@ interface Order {
   tip_cents: number;
   total_cents: number;
   placed_at: string;
+  arrived_at: string | null;
 }
 
 interface Item {
@@ -102,7 +103,6 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState<string | null>(null);
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
-  const [arrivedIds, setArrivedIds] = useState<Set<string>>(new Set());
   const [pizzaStates, setPizzaStates] = useState<Map<string, string>>(new Map());
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
   const [toasts, setToasts] = useState<{ id: string; message: string; color: string; exiting: boolean }[]>([]);
@@ -133,6 +133,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
       tip_cents: 300,
       total_cents: 3100,
       placed_at: new Date().toISOString(),
+      arrived_at: null,
     };
     const fakeItem: Item = { order_id: id, pizza_name: "Margherita", quantity: 2, unit_price_cents: 1400 };
     prevIdsRef.current = new Set([...prevIdsRef.current, id]);
@@ -149,7 +150,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
     const { data: freshOrders } = await supabase
       .from("orders")
       .select(
-        "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at"
+        "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at, arrived_at"
       )
       .eq("service_night_id", serviceNight.id)
       .neq("status", "pending_payment")
@@ -201,8 +202,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
       .on(
         "broadcast",
         { event: "customer_arrived" },
-        ({ payload }: { payload: { orderId: string; customerName: string } }) => {
-          setArrivedIds((prev) => new Set([...prev, payload.orderId]));
+        ({ payload }: { payload: { customerName: string } }) => {
           addToast(`🚶 ${payload.customerName} has arrived`, "#C9A227");
         }
       )
@@ -219,12 +219,29 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   }, [serviceNight.id, refetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function markArrived(order: Order) {
-    setArrivedIds((prev) => new Set([...prev, order.id]));
+    const arrivedAt = new Date().toISOString();
+    setOrders((prev) =>
+      prev.map((o) => (o.id === order.id ? { ...o, arrived_at: arrivedAt } : o))
+    );
     addToast(`🚶 ${order.customer_name} has arrived`, "#C9A227");
+
+    const { error } = await supabase
+      .from("orders")
+      .update({ arrived_at: arrivedAt })
+      .eq("id", order.id);
+
+    if (error) {
+      console.error("Failed to persist arrived state:", error);
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, arrived_at: null } : o))
+      );
+      return;
+    }
+
     await supabase.channel(`orders-admin-${serviceNight.id}`).send({
       type: "broadcast",
       event: "customer_arrived",
-      payload: { orderId: order.id, customerName: order.customer_name },
+      payload: { customerName: order.customer_name },
     });
   }
 
@@ -360,7 +377,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
               items={items.filter((i) => i.order_id === order.id)}
               updating={updating === order.id}
               glowing={glowingIds.has(order.id)}
-              arrived={arrivedIds.has(order.id)}
+              arrived={order.arrived_at !== null}
               pizzaStates={pizzaStates}
               onCancel={() => updateStatus(order.id, "cancelled")}
               onRestore={() => updateStatus(order.id, "new")}
