@@ -41,6 +41,16 @@ export async function GET(request: Request) {
     reminder_copy: string | null;
   };
 
+  // ── Only send if service is within the next 3 days (this week's Friday) ──
+  const todayDate = new Date(today);
+  const serviceDate = new Date(night.service_date);
+  const daysUntilService = Math.round(
+    (serviceDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  if (daysUntilService > 3) {
+    return NextResponse.json({ skipped: true, reason: "Service night is more than 3 days away" });
+  }
+
   // ── Idempotency guard (skip in test mode) ────────────────────────────────
   if (night.reminder_sent_at && !isTest) {
     return NextResponse.json({ skipped: true, reason: "Already sent" });
