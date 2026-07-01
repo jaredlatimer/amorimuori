@@ -84,8 +84,41 @@ export default async function Home() {
       })()
     : null;
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FoodEstablishment",
+    name: "Amori Muori",
+    url: "https://amorimuori.com",
+    description: "Authentic Neapolitan pizza, made to order every Friday in Ashburn Farm, VA. 900° wood-fired oven, 60-second bake.",
+    servesCuisine: "Neapolitan Pizza",
+    priceRange: "$$",
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: "42852 Crossbow Ct",
+      addressLocality: "Ashburn",
+      addressRegion: "VA",
+      postalCode: "20147",
+      addressCountry: "US",
+    },
+    areaServed: {
+      "@type": "City",
+      name: "Ashburn, VA",
+    },
+    openingHoursSpecification: {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: "Friday",
+      opens: "17:30",
+      closes: "21:00",
+    },
+  };
+
   return (
-    <div
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div
       style={{
         minHeight: "100vh",
         background: "#484D52",
@@ -383,6 +416,7 @@ export default async function Home() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </>
   );
 }
