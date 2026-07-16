@@ -8,7 +8,7 @@ export default async function BlastPage() {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
   const [{ data: orders }, { data: unsubs }, { data: rawNight }] = await Promise.all([
-    supabase.from("orders").select("customer_email").eq("status", "picked_up"),
+    supabase.from("orders").select("customer_email").not("status", "in", '("cancelled","refunded","pending_payment")'),
     supabase.from("email_unsubscribes").select("email"),
     supabase
       .from("service_nights")
