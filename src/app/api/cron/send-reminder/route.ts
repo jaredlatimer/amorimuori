@@ -141,7 +141,7 @@ export async function GET(request: Request) {
   // ── Build recipient list (deduped, excluding unsubscribes) ────────────────
   const [{ data: signups }, { data: pastCustomers }, { data: unsubs }] = await Promise.all([
     supabase.from("reminder_signups").select("email"),
-    supabase.from("orders").select("customer_email").eq("status", "picked_up"),
+    supabase.from("orders").select("customer_email").not("status", "in", '("cancelled","refunded","pending_payment")'),
     supabase.from("email_unsubscribes").select("email"),
   ]);
 
