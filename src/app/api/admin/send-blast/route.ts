@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: orders } = await service.from("orders").select("customer_email").eq("status", "picked_up");
+  const { data: orders } = await service.from("orders").select("customer_email").not("status", "in", '("cancelled","refunded","pending_payment")');
   const emails = [
     ...new Set(
       (orders ?? [])
