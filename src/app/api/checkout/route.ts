@@ -169,23 +169,33 @@ export async function POST(request: Request) {
       ).toISOString()
     : new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
+  // ── Oven window ───────────────────────────────────────────────────────────────
+  // The oven is occupied from (pickup_time − pizzas × bake_minutes) until pickup_time.
+  // Two orders conflict when their oven windows overlap.
+  const ovenEndTime = pickupSlot;
+  const ovenStartTime = new Date(
+    new Date(pickupSlot).getTime() - totalPizzas * bakeMinutes * 60 * 1000
+  ).toISOString();
+
   // ── Slot conflict check ───────────────────────────────────────────────────────
-  // Enforce the race: if another order already holds this pickup slot, reject.
+  // Reject if any active order's oven window overlaps with this one.
   if (!isDevMock) {
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: slotConflict } = await supabase
+    const { data: ovenConflict } = await supabase
       .from("orders")
       .select("id, customer_email")
       .eq("service_night_id", serviceNightId)
-      .eq("pickup_at", pickupSlot)
       .or(
-        `status.in.(new,making,ready,picked_up),and(status.eq.pending_payment,placed_at.gte.${thirtyMinutesAgo})`
+        `status.in.(new,making,ready),and(status.eq.pending_payment,placed_at.gte.${thirtyMinutesAgo})`
       )
+      .not("oven_start_time", "is", null)
+      .lt("oven_start_time", ovenEndTime)
+      .gt("oven_end_time", ovenStartTime)
       .maybeSingle();
 
-    if (slotConflict && (slotConflict as { id: string; customer_email: string }).customer_email !== email) {
+    if (ovenConflict && (ovenConflict as { id: string; customer_email: string }).customer_email !== email) {
       return NextResponse.json(
-        { error: "That pickup time was just taken. Please go back and choose a different slot.", slotTaken: true },
+        { error: "That pickup time is no longer available. Please go back and choose a different slot.", slotTaken: true },
         { status: 409 }
       );
     }
@@ -226,6 +236,9 @@ export async function POST(request: Request) {
         cancellable_until: cancellableUntil,
         stripe_payment_intent_id: null,
         sms_opt_in: smsOptIn ?? false,
+        oven_start_time: ovenStartTime,
+        oven_end_time: ovenEndTime,
+        slot_locked_at: now,
       })
       .eq("id", existing.id);
 
@@ -252,6 +265,9 @@ export async function POST(request: Request) {
         total_cents: totalCents,
         cancellable_until: cancellableUntil,
         sms_opt_in: smsOptIn ?? false,
+        oven_start_time: ovenStartTime,
+        oven_end_time: ovenEndTime,
+        slot_locked_at: now,
       })
       .select("id")
       .single();
