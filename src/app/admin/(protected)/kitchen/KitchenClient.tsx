@@ -19,6 +19,7 @@ interface Item {
 
 interface Props {
   serviceNightId: string;
+  bakeMinutes: number;
   initialOrders: Order[];
   initialItems: Item[];
 }
@@ -40,7 +41,15 @@ function pizzaKey(orderId: string, pizzaName: string, index: number) {
   return `${orderId}::${pizzaName}::${index}`;
 }
 
-export function KitchenClient({ serviceNightId, initialOrders, initialItems }: Props) {
+function startCookInfo(order: Order, items: Item[], bakeMinutes: number, now: number) {
+  const pizzaCount = items
+    .filter((i) => i.order_id === order.id)
+    .reduce((s, i) => s + i.quantity, 0);
+  const startCookMs = new Date(order.pickup_at).getTime() - pizzaCount * bakeMinutes * 60_000;
+  return { startCookMs, overdue: now >= startCookMs };
+}
+
+export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, initialItems }: Props) {
   const [orders, setOrders] = useState<Order[]>(
     [...initialOrders].sort((a, b) => new Date(a.pickup_at).getTime() - new Date(b.pickup_at).getTime())
   );
@@ -48,8 +57,14 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
   const [updating, setUpdating] = useState(false);
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
   const [pizzaStates, setPizzaStates] = useState<Map<string, PizzaState>>(new Map());
+  const [now, setNow] = useState(() => Date.now());
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
   const supabase = createClient();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, []);
 
   const refetch = useCallback(async () => {
     const { data: freshOrders } = await supabase
@@ -178,6 +193,17 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
           border-radius: 11px;
           padding: 12px 14px;
         }
+        .queue-card-alert {
+          border-color: #eb5757 !important;
+          background: #eb575722 !important;
+        }
+        @keyframes cookAlertPulse {
+          0%, 100% { box-shadow: 0 0 0 0 #eb575799; }
+          50% { box-shadow: 0 0 0 10px #eb575700; }
+        }
+        .start-cook-alert {
+          animation: cookAlertPulse 1.8s ease-in-out infinite;
+        }
 
         @media (max-width: 640px) {
           .kitchen-body {
@@ -256,10 +282,12 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
             <div style={{ margin: "auto", textAlign: "center", color: "#F8EAD544", fontSize: 26 }}>
               All caught up. 🎉
             </div>
-          ) : (
+          ) : (() => {
+            const currentStartCook = startCookInfo(current, items, bakeMinutes, now);
+            return (
             <div
-              className={`kitchen-ticket-card${glowingIds.has(current.id) ? " order-new-glow" : ""}`}
-              style={{ background: "#fff", border: `4px solid ${STATUS_COLOR[current.status]}` }}
+              className={`kitchen-ticket-card${glowingIds.has(current.id) ? " order-new-glow" : ""}${currentStartCook.overdue ? " start-cook-alert" : ""}`}
+              style={{ background: "#fff", border: `4px solid ${currentStartCook.overdue ? "#eb5757" : STATUS_COLOR[current.status]}` }}
             >
               {/* Status band */}
               <div style={{ background: STATUS_COLOR[current.status], color: "#fff", padding: "16px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
@@ -276,6 +304,16 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
                   <div className="font-display" style={{ fontWeight: 900, fontSize: 30, lineHeight: 1 }}>
                     {formatTime(current.pickup_at)}
                   </div>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, opacity: 0.85, fontWeight: 700, marginTop: 8 }}>Start Cook</div>
+                  {currentStartCook.overdue ? (
+                    <div style={{ display: "inline-block", marginTop: 2, background: "#fff", color: "#eb5757", fontWeight: 900, fontSize: 14, borderRadius: 100, padding: "3px 12px", letterSpacing: 0.5 }}>
+                      NOW
+                    </div>
+                  ) : (
+                    <div className="font-display" style={{ fontWeight: 900, fontSize: 18, lineHeight: 1, marginTop: 2 }}>
+                      {formatTime(new Date(currentStartCook.startCookMs).toISOString())}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -370,7 +408,8 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
                 );
               })()}
             </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Queue panel */}
@@ -382,13 +421,18 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
             {upNext.length === 0 && (
               <div style={{ color: "#F8EAD544", fontSize: 14, paddingLeft: 4 }}>Nothing waiting.</div>
             )}
-            {upNext.map((o, idx) => (
-              <div key={o.id} className={`kitchen-queue-card${glowingIds.has(o.id) ? " order-new-glow" : ""}`}>
+            {upNext.map((o, idx) => {
+              const queueStartCook = startCookInfo(o, items, bakeMinutes, now);
+              return (
+              <div key={o.id} className={`kitchen-queue-card${glowingIds.has(o.id) ? " order-new-glow" : ""}${queueStartCook.overdue ? " queue-card-alert" : ""}`}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 13, color: "#F8EAD599", fontWeight: 600 }}>#{idx + 2}</span>
                   <span className="font-display" style={{ fontWeight: 900, fontSize: 16, color: "#F8EAD5" }}>
                     {formatTime(o.pickup_at)}
                   </span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4, color: queueStartCook.overdue ? "#eb5757" : "#F8EAD599" }}>
+                  Start Cook: {queueStartCook.overdue ? "Now" : formatTime(new Date(queueStartCook.startCookMs).toISOString())}
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#F8EAD5", marginBottom: 4 }}>
                   {o.customer_name}
@@ -399,7 +443,8 @@ export function KitchenClient({ serviceNightId, initialOrders, initialItems }: P
                   </div>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
