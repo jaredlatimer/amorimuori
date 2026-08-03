@@ -48,9 +48,16 @@ export default async function KitchenPage() {
           .in("order_id", orderIds)
       : { data: [] };
 
+  const { data: rawSettings } = await supabase
+    .from("settings")
+    .select("bake_minutes")
+    .single();
+  const bakeMinutes = (rawSettings as { bake_minutes?: number } | null)?.bake_minutes ?? 5;
+
   return (
     <KitchenClient
       serviceNightId={n.id}
+      bakeMinutes={bakeMinutes}
       initialOrders={
         (orders ?? []) as Parameters<typeof KitchenClient>[0]["initialOrders"]
       }
