@@ -247,10 +247,17 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
           {process.env.NODE_ENV === "development" && (
             <button
               onClick={() => {
+                const input = window.prompt(
+                  "Pickup in how many minutes from now? (negative = already passed)",
+                  "30"
+                );
+                if (input === null) return;
+                const minutes = parseInt(input, 10);
+                if (isNaN(minutes)) return;
                 const id = `fake-${Date.now()}`;
                 const fakeOrder: Order = {
                   id, code: "TST-K1", customer_name: "Test Customer",
-                  pickup_at: new Date(Date.now() + 30 * 60000).toISOString(),
+                  pickup_at: new Date(Date.now() + minutes * 60000).toISOString(),
                   status: "new",
                 };
                 const fakeItems: Item[] = [
