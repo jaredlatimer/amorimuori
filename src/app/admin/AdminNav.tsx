@@ -1,200 +1,182 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export function AdminNav() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
+type IconName = "service" | "nights" | "menu" | "people" | "gear";
 
-  async function signOut() {
+interface Section {
+  label: string;
+  icon: IconName;
+  pages: { label: string; href: string }[];
+}
+
+// Five sections, grouped by when you use them. Page URLs are unchanged so
+// bookmarks and the kitchen tablet keep working.
+const SECTIONS: Section[] = [
+  {
+    label: "Service",
+    icon: "service",
+    pages: [
+      { label: "Board", href: "/admin/service" },
+      { label: "Oven view", href: "/admin/kitchen" },
+      { label: "Walk-in", href: "/admin/walk-in" },
+    ],
+  },
+  {
+    label: "Nights",
+    icon: "nights",
+    pages: [
+      { label: "All nights", href: "/admin/nights" },
+    ],
+  },
+  {
+    label: "Menu",
+    icon: "menu",
+    pages: [
+      { label: "Pizzas", href: "/admin/menu" },
+      { label: "Costs", href: "/admin/costs" },
+    ],
+  },
+  {
+    label: "Customers",
+    icon: "people",
+    pages: [
+      { label: "Customers", href: "/admin/customers" },
+      { label: "Rewards", href: "/admin/rewards" },
+      { label: "Blast", href: "/admin/blast" },
+      { label: "Reminders", href: "/admin/reminders" },
+    ],
+  },
+  {
+    label: "Settings",
+    icon: "gear",
+    pages: [{ label: "Settings", href: "/admin/settings" }],
+  },
+];
+
+function isActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
+function activeSection(pathname: string) {
+  return SECTIONS.find((s) => s.pages.some((p) => isActive(pathname, p.href))) ?? SECTIONS[0];
+}
+
+function Icon({ name }: { name: IconName }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      {name === "service" && <path d="M3 15h14M4.5 15a5.5 5.5 0 0 1 11 0M10 6.5V5" {...common} />}
+      {name === "nights" && (
+        <>
+          <rect x="3" y="4.5" width="14" height="12" rx="2.5" {...common} />
+          <path d="M3 8.5h14M7 3v3M13 3v3" {...common} />
+        </>
+      )}
+      {name === "menu" && (
+        <>
+          <path d="M10 3 3 16.5h14z" {...common} />
+          <circle cx="10" cy="11" r="1.4" fill="currentColor" />
+          <circle cx="7.6" cy="14" r="1.1" fill="currentColor" />
+          <circle cx="12.4" cy="14" r="1.1" fill="currentColor" />
+        </>
+      )}
+      {name === "people" && (
+        <path d="M7.5 9.8a2.8 2.8 0 1 0 0-5.6 2.8 2.8 0 0 0 0 5.6ZM2.5 16a5 5 0 0 1 10 0M13 4.5a2.6 2.6 0 0 1 0 5M14.5 12a4.5 4.5 0 0 1 3 4" {...common} />
+      )}
+      {name === "gear" && (
+        <>
+          <circle cx="10" cy="10" r="2.6" {...common} />
+          <path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6" {...common} />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function useSignOut() {
+  const router = useRouter();
+  return async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/admin/login");
     router.refresh();
-  }
+  };
+}
 
-  const tabs = [
-    { label: "Orders", href: "/admin/orders" },
-    { label: "Kitchen", href: "/admin/kitchen" },
-    { label: "Walk-in", href: "/admin/walk-in" },
-    { label: "Shopping", href: "/admin/shopping" },
-    { label: "Inventory", href: "/admin/inventory" },
-    { label: "Menu", href: "/admin/menu" },
-    { label: "Costs", href: "/admin/costs" },
-    { label: "Dashboard", href: "/admin/dashboard" },
-    { label: "Blast", href: "/admin/blast" },
-    { label: "Settings", href: "/admin/settings" },
-  ];
+/** Desktop sidebar plus the phone's bottom tab bar. */
+export function AdminNav() {
+  const pathname = usePathname();
+  const signOut = useSignOut();
+  const current = activeSection(pathname);
 
   return (
     <>
-      <nav
-        style={{
-          background: "#484D52",
-          borderBottom: "1px solid #F8EAD510",
-          padding: "0 24px",
-          display: "flex",
-          alignItems: "center",
-          gap: 0,
-          height: 56,
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        {/* Logo */}
-        <span
-          className="font-display"
-          style={{
-            fontSize: 18,
-            fontWeight: 900,
-            color: "#F8EAD5",
-            marginRight: 32,
-            letterSpacing: -0.3,
-            flexShrink: 0,
-          }}
-        >
+      <aside className="admin-side">
+        <a href="/admin/service" className="admin-logo font-display">
           Amori Muori
-        </span>
-
-        {/* Tabs — desktop only */}
-        <div className="admin-nav-tabs" style={{ display: "flex", gap: 4, flex: 1 }}>
-          {tabs.map((tab) => {
-            const active = pathname.startsWith(tab.href);
+        </a>
+        <nav className="admin-side-nav">
+          {SECTIONS.map((s) => {
+            const on = s === current;
             return (
-              <a
-                key={tab.href}
-                href={tab.href}
-                style={{
-                  padding: "0 16px",
-                  height: 56,
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: active ? "#F8EAD5" : "#F8EAD566",
-                  textDecoration: "none",
-                  borderBottom: active ? "2px solid #2F7D4F" : "2px solid transparent",
-                  transition: "color 0.15s",
-                }}
-              >
-                {tab.label}
-              </a>
+              <div key={s.label}>
+                <a href={s.pages[0].href} className={`admin-side-link${on ? " on" : ""}`}>
+                  <Icon name={s.icon} />
+                  {s.label}
+                </a>
+                {on && s.pages.length > 1 && (
+                  <div className="admin-side-sub">
+                    {s.pages.map((p) => (
+                      <a key={p.href} href={p.href} className={isActive(pathname, p.href) ? "on" : undefined}>
+                        {p.label}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
-        </div>
-
-        {/* Sign out — desktop only */}
-        <button
-          className="admin-nav-signout"
-          onClick={signOut}
-          style={{
-            background: "transparent",
-            border: "1px solid #F8EAD520",
-            color: "#F8EAD566",
-            borderRadius: 8,
-            padding: "6px 14px",
-            fontSize: 13,
-            cursor: "pointer",
-            flexShrink: 0,
-            fontFamily: "var(--font-archivo), sans-serif",
-          }}
-        >
+        </nav>
+        <button className="admin-signout" onClick={signOut}>
           Sign out
         </button>
+      </aside>
 
-        {/* Hamburger — mobile only */}
-        <button
-          className="admin-nav-hamburger"
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
-          style={{
-            marginLeft: "auto",
-            background: "transparent",
-            border: "none",
-            color: "#F8EAD5",
-            cursor: "pointer",
-            padding: 6,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {menuOpen ? (
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <line x1="4" y1="4" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <line x1="18" y1="4" x2="4" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          ) : (
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <line x1="3" y1="6" x2="19" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <line x1="3" y1="11" x2="19" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <line x1="3" y1="16" x2="19" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          )}
-        </button>
+      <nav className="admin-tabbar" aria-label="Sections">
+        {SECTIONS.map((s) => (
+          <a key={s.label} href={s.pages[0].href} className={s === current ? "on" : undefined}>
+            <Icon name={s.icon} />
+            {s.label}
+          </a>
+        ))}
       </nav>
-
-      {/* Mobile dropdown menu */}
-      {menuOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 56,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "#3A3E43",
-            zIndex: 49,
-            display: "flex",
-            flexDirection: "column",
-            padding: "8px 0",
-            overflowY: "auto",
-          }}
-        >
-          {tabs.map((tab) => {
-            const active = pathname.startsWith(tab.href);
-            return (
-              <a
-                key={tab.href}
-                href={tab.href}
-                onClick={() => setMenuOpen(false)}
-                style={{
-                  padding: "15px 24px",
-                  fontSize: 17,
-                  fontWeight: 700,
-                  color: active ? "#F8EAD5" : "#F8EAD577",
-                  textDecoration: "none",
-                  borderLeft: `3px solid ${active ? "#2F7D4F" : "transparent"}`,
-                  background: active ? "#F8EAD508" : "transparent",
-                  fontFamily: "var(--font-archivo), sans-serif",
-                }}
-              >
-                {tab.label}
-              </a>
-            );
-          })}
-          <div style={{ marginTop: "auto", padding: "16px 24px", borderTop: "1px solid #F8EAD510" }}>
-            <button
-              onClick={() => { setMenuOpen(false); signOut(); }}
-              style={{
-                background: "transparent",
-                border: "1px solid #F8EAD520",
-                color: "#F8EAD566",
-                borderRadius: 8,
-                padding: "8px 16px",
-                fontSize: 14,
-                cursor: "pointer",
-                fontFamily: "var(--font-archivo), sans-serif",
-              }}
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      )}
     </>
+  );
+}
+
+/** On phones, the pages inside the current section as a row of pills. */
+export function AdminSubnav() {
+  const pathname = usePathname();
+  const signOut = useSignOut();
+  const current = activeSection(pathname);
+  const showSignOut = current.label === "Settings";
+  if (current.pages.length < 2 && !showSignOut) return null;
+
+  return (
+    <div className="admin-subnav">
+      {current.pages.length > 1 &&
+        current.pages.map((p) => (
+          <a key={p.href} href={p.href} className={isActive(pathname, p.href) ? "on" : undefined}>
+            {p.label}
+          </a>
+        ))}
+      {showSignOut && (
+        <button onClick={signOut} className="admin-subnav-signout">
+          Sign out
+        </button>
+      )}
+    </div>
   );
 }

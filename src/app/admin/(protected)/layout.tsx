@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AdminNav } from "../AdminNav";
+import { AdminNav, AdminSubnav } from "../AdminNav";
 
 export default async function AdminLayout({
   children,
@@ -18,6 +18,7 @@ export default async function AdminLayout({
 
   return (
     <div
+      className="admin-shell"
       style={{
         minHeight: "100vh",
         background: "#3A3E43",
@@ -26,8 +27,9 @@ export default async function AdminLayout({
       }}
     >
       <AdminNav />
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px 60px" }}>
-        {children}
+      <main className="admin-main">
+        <AdminSubnav />
+        <div style={{ maxWidth: 1240, margin: "0 auto" }}>{children}</div>
       </main>
     </div>
   );
