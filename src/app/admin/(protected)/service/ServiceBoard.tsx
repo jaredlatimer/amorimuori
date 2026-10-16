@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CancelOrderModal, type CancelMode } from "../CancelOrderModal";
 
 type OrderStatus = "new" | "making" | "ready" | "picked_up" | "cancelled" | "refunded";
 type Lane = "new" | "making" | "ready" | "done";
@@ -16,6 +17,7 @@ export interface BoardOrder {
   status: OrderStatus;
   arrived_at: string | null;
   total_cents: number;
+  stripe_payment_intent_id: string | null;
 }
 
 export interface BoardItem {
@@ -105,7 +107,7 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ order: BoardOrder; mode: CancelMode } | null>(null);
   const [confirmSoldOut, setConfirmSoldOut] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [mobileLane, setMobileLane] = useState<Lane>("new");
@@ -123,7 +125,7 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
   const refetch = useCallback(async () => {
     const { data: fresh } = await supabase
       .from("orders")
-      .select("id, code, customer_name, customer_phone, pickup_at, status, arrived_at, total_cents")
+      .select("id, code, customer_name, customer_phone, pickup_at, status, arrived_at, total_cents, stripe_payment_intent_id")
       .eq("service_night_id", night.id)
       .neq("status", "pending_payment")
       .order("pickup_at", { ascending: true });
@@ -154,10 +156,7 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
   // Close the ··· menu on any outside click
   useEffect(() => {
     if (!openMenu) return;
-    const close = () => {
-      setOpenMenu(null);
-      setConfirmCancel(null);
-    };
+    const close = () => setOpenMenu(null);
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [openMenu]);
@@ -170,7 +169,6 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
 
   async function setStatus(order: BoardOrder, status: OrderStatus) {
     setOpenMenu(null);
-    setConfirmCancel(null);
     setBusy(order.id);
     const previous = order.status;
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status } : o)));
@@ -184,6 +182,47 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: previous } : o)));
       showError(`Couldn't update ${order.customer_name}'s order. Check your connection and try again.`);
     }
+  }
+
+  function openCancel(order: BoardOrder, mode: CancelMode) {
+    setOpenMenu(null);
+    setCancelTarget({ order, mode });
+  }
+
+  /** Plain cancel (no money back). Resolves to an error message, or null on success. */
+  async function cancelOrder(order: BoardOrder): Promise<string | null> {
+    setBusy(order.id);
+    const res = await fetch("/api/admin/update-order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, status: "cancelled" }),
+    }).catch(() => null);
+    setBusy(null);
+    if (!res) return "Couldn't reach the server. Check your connection and try again.";
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      return data?.error ?? "Couldn't cancel the order. Try again.";
+    }
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "cancelled" } : o)));
+    refetch();
+    return null;
+  }
+
+  /** Cancel & refund the card through Stripe. Resolves to an error message, or null on success. */
+  async function refundOrder(order: BoardOrder): Promise<string | null> {
+    setBusy(order.id);
+    const res = await fetch("/api/admin/refund-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id }),
+    }).catch(() => null);
+    setBusy(null);
+    if (!res) return "Couldn't reach the server. Check your connection and try again.";
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return data?.error ?? "Refund failed. The order was not changed.";
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "refunded" } : o)));
+    refetch();
+    return null;
   }
 
   async function markArrived(order: BoardOrder) {
@@ -403,7 +442,6 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
                             aria-label={`More actions for ${o.customer_name}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setConfirmCancel(null);
                               setOpenMenu(openMenu === o.id ? null : o.id);
                             }}
                           >
@@ -411,28 +449,21 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
                           </button>
                           {openMenu === o.id && (
                             <div className="svc-menu" onClick={(e) => e.stopPropagation()}>
-                              {confirmCancel === o.id ? (
+                              {back && <button onClick={() => setStatus(o, back.status)}>{back.label}</button>}
+                              {o.status === "making" && (
+                                <button onClick={() => setStatus(o, "picked_up")}>Mark picked up</button>
+                              )}
+                              {canArrive && <button onClick={() => markArrived(o)}>Customer is here</button>}
+                              {canCancel && (
                                 <>
-                                  <span className="q">Cancel {o.customer_name}&apos;s order? This doesn&apos;t refund the card.</span>
-                                  <button onClick={() => setConfirmCancel(null)}>Keep it</button>
-                                  <button className="danger" onClick={() => setStatus(o, "cancelled")}>
-                                    Yes, cancel
+                                  <hr />
+                                  <button className="danger" onClick={() => openCancel(o, "cancel")}>
+                                    Cancel (no refund)…
                                   </button>
-                                </>
-                              ) : (
-                                <>
-                                  {back && <button onClick={() => setStatus(o, back.status)}>{back.label}</button>}
-                                  {o.status === "making" && (
-                                    <button onClick={() => setStatus(o, "picked_up")}>Mark picked up</button>
-                                  )}
-                                  {canArrive && <button onClick={() => markArrived(o)}>Customer is here</button>}
-                                  {canCancel && (
-                                    <>
-                                      <hr />
-                                      <button className="danger" onClick={() => setConfirmCancel(o.id)}>
-                                        Cancel order…
-                                      </button>
-                                    </>
+                                  {o.stripe_payment_intent_id && (
+                                    <button className="danger" onClick={() => openCancel(o, "refund")}>
+                                      Cancel &amp; refund ${(o.total_cents / 100).toFixed(2)}…
+                                    </button>
                                   )}
                                 </>
                               )}
@@ -452,6 +483,20 @@ export function ServiceBoard({ night, allNights, bakeMinutes, initialOrders, ini
       <a className="svc-fab" href="/admin/walk-in">
         + Walk-in
       </a>
+
+      {cancelTarget && (
+        <CancelOrderModal
+          mode={cancelTarget.mode}
+          customerName={cancelTarget.order.customer_name}
+          code={cancelTarget.order.code}
+          amountCents={cancelTarget.order.total_cents}
+          canRefund={!!cancelTarget.order.stripe_payment_intent_id}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={() =>
+            cancelTarget.mode === "refund" ? refundOrder(cancelTarget.order) : cancelOrder(cancelTarget.order)
+          }
+        />
+      )}
 
       {error && <div className="svc-error">{error}</div>}
     </div>
@@ -515,7 +560,6 @@ const BOARD_CSS = `
 .svc-menu button { text-align: left; background: none; border: 0; color: inherit; font: 500 13px var(--font-archivo), sans-serif; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
 .svc-menu button:hover { background: #F8EAD512; }
 .svc-menu .danger { color: #f0a0a0; }
-.svc-menu .q { font-size: 12px; color: #F8EAD5bb; padding: 6px 10px; }
 .svc-menu hr { border: 0; border-top: 1px solid #F8EAD51a; margin: 3px 0; }
 .svc-fab { display: none; }
 .svc-error { position: fixed; left: 50%; transform: translateX(-50%); bottom: 28px; z-index: 100; background: #60403F; color: #F8EAD5; border-radius: 12px; padding: 12px 18px; font-size: 14px; font-weight: 700; box-shadow: 0 6px 24px #0007; max-width: calc(100vw - 32px); }

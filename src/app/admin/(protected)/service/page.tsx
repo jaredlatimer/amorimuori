@@ -45,7 +45,7 @@ export default async function ServicePage({
   const [{ data: orders }, { data: pizzas }, { data: rawSettings }] = await Promise.all([
     supabase
       .from("orders")
-      .select("id, code, customer_name, customer_phone, pickup_at, status, arrived_at, total_cents")
+      .select("id, code, customer_name, customer_phone, pickup_at, status, arrived_at, total_cents, stripe_payment_intent_id")
       .eq("service_night_id", night.id)
       .neq("status", "pending_payment")
       .order("pickup_at", { ascending: true }),
