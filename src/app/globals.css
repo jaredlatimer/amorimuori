@@ -99,6 +99,39 @@ body {
   }
 }
 
+/* Calendar page: date box beside the next night, list beside the reminder card; stacked on phones */
+.cal-next {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+.cal-datebox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.cal-night {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .cal-grid, .cal-next { grid-template-columns: minmax(0, 1fr); }
+  .cal-datebox { flex-direction: row; align-items: baseline; justify-content: center; gap: 10px; }
+  .cal-night { grid-template-columns: 48px minmax(0, 1fr); }
+  .cal-night-pill { grid-column: 2; }
+}
+
 /* Order card: single column on mobile, two-column on wider screens */
 .order-card-body {
   display: flex;
