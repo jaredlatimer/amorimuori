@@ -59,6 +59,8 @@ interface OrderFormProps {
   nightlyTotal: number;
   initialReferralCode?: string;
   referralVia?: ReferralVia | null;
+  initialQty?: Record<string, number>;
+  prefillNote?: string | null;
 }
 
 export function OrderForm({
@@ -70,11 +72,13 @@ export function OrderForm({
   nightlyTotal,
   initialReferralCode = "",
   referralVia = null,
+  initialQty,
+  prefillNote = null,
 }: OrderFormProps) {
   const isTonight =
     serviceDate ===
     new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  const [qty, setQty] = useState<Record<string, number>>({});
+  const [qty, setQty] = useState<Record<string, number>>(initialQty ?? {});
   const [slots, setSlots] = useState<string[]>([]);
   const [slot, setSlot] = useState("");
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -549,6 +553,21 @@ export function OrderForm({
           >
             Your order
           </h3>
+
+          {/* "Order again" prefill note */}
+          {prefillNote && checkout.stage !== "payment" && (
+            <p
+              style={{
+                fontSize: 13.5,
+                color: "#256340",
+                fontWeight: 700,
+                lineHeight: 1.45,
+                margin: "10px 0 0",
+              }}
+            >
+              {prefillNote}
+            </p>
+          )}
 
           {totalPizzas === 0 ? (
             <p style={{ color: "#484D5299", marginTop: 14, fontSize: 15 }}>

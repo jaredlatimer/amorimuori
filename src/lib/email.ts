@@ -350,10 +350,11 @@ export interface PostPickupEmailData {
   code: string;
   introCopy: string;
   subject: string;
+  orderAgainUrl: string;
 }
 
 export async function sendPostPickupEmail(data: PostPickupEmailData) {
-  const { to, name, introCopy, subject } = data;
+  const { to, name, introCopy, subject, orderAgainUrl } = data;
   await resend.emails.send({
     from: FROM,
     to,
@@ -375,6 +376,9 @@ export async function sendPostPickupEmail(data: PostPickupEmailData) {
               <strong>@amorimuori</strong> on Instagram.
             </p>
             <p style="margin:16px 0 0;font-size:15px;color:#484D52;font-family:Arial,sans-serif;">We'd love to see it.</p>
+            <div style="margin:24px 0 0;text-align:center;">
+              <a href="${orderAgainUrl}" style="display:inline-block;background:#2F7D4F;color:#F8EAD5;text-decoration:none;font-family:Arial,sans-serif;font-size:16px;font-weight:700;padding:14px 34px;border-radius:100px;">Order again →</a>
+            </div>
             <p style="margin:24px 0 0;font-size:15px;color:#484D5299;font-family:Arial,sans-serif;">— Amori Muori</p>
           </td>
         </tr>
