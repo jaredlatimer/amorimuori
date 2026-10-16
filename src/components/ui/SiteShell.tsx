@@ -26,6 +26,8 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         <a href="/" style={{ textDecoration: "none" }}>
           <LogoLockup />
         </a>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <a href="/events" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Events</a>
         <a
           href="/"
           style={{
@@ -36,6 +38,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         >
           ← Back to home
         </a>
+        </div>
       </nav>
 
       <div style={{ flex: 1 }}>{children}</div>

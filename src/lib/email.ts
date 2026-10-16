@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { createHmac } from "crypto";
 import { formatBlastBody } from "./blast-format";
+import { findPackage, shortEstimate } from "./event-packages";
 
 const resend = new Resend(process.env.RESEND_API_KEY ?? "no-key");
 
@@ -385,31 +386,43 @@ export async function sendPostPickupEmail(data: PostPickupEmailData) {
 export interface CateringInquiryData {
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   eventDate: string;
   location: string;
   guestCount: number;
   eventType: string;
+  packageId?: string;
+  dietaryNotes?: string;
   servingWindow?: string;
   notes?: string;
+}
+
+// Inquiry fields are typed by the public, so escape them before they go into HTML
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 export async function sendCateringInquiryNotification(data: CateringInquiryData) {
   const adminEmail = process.env.ADMIN_EMAIL;
   if (!adminEmail) return;
+  const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
 
   const eventDateFormatted = new Date(data.eventDate + "T12:00:00").toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
   });
 
+  const pkg = findPackage(data.packageId);
   const rows = [
     ["Name", data.name],
     ["Email", data.email],
-    ["Phone", data.phone],
+    ["Phone", data.phone || "Not given"],
     ["Event date", eventDateFormatted],
     ["Location", data.location],
     ["Guests", String(data.guestCount)],
-    ["Event type", data.eventType],
+    ["Kind of event", data.eventType],
+    ["Package", pkg ? pkg.name : "Not sure yet"],
+    ...(pkg ? [["Estimate", shortEstimate(pkg, data.guestCount)]] : []),
+    ["Allergies / dietary", data.dietaryNotes || "None given"],
     ...(data.servingWindow ? [["Serving window", data.servingWindow]] : []),
     ...(data.notes ? [["Notes", data.notes]] : []),
   ]
@@ -417,20 +430,65 @@ export async function sendCateringInquiryNotification(data: CateringInquiryData)
       ([label, value]) => `
       <tr>
         <td style="padding:6px 12px 6px 0;font-size:13px;color:#484D5299;font-family:Arial,sans-serif;white-space:nowrap;vertical-align:top;">${label}</td>
-        <td style="padding:6px 0;font-size:14px;color:#484D52;font-family:Arial,sans-serif;font-weight:600;">${value}</td>
+        <td style="padding:6px 0;font-size:14px;color:#484D52;font-family:Arial,sans-serif;font-weight:600;white-space:pre-wrap;">${escapeHtml(value)}</td>
       </tr>`
     )
     .join("");
 
+  const contact = data.phone
+    ? `Reply directly to ${escapeHtml(data.email)} or call ${escapeHtml(data.phone)}.`
+    : `Reply directly to ${escapeHtml(data.email)}.`;
+
   await resend.emails.send({
     from: FROM,
     to: adminEmail,
-    subject: `Catering inquiry — ${data.name}, ${eventDateFormatted} (${data.guestCount} guests)`,
+    replyTo: data.email,
+    subject: `Event inquiry — ${data.name}, ${eventDateFormatted} (${data.guestCount} guests)`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-        <h2 style="color:#2F7D4F;margin:0 0 16px;">New catering inquiry</h2>
+        <h2 style="color:#2F7D4F;margin:0 0 16px;">New event inquiry</h2>
         <table cellpadding="0" cellspacing="0">${rows}</table>
-        <p style="margin:20px 0 0;font-size:13px;color:#888;">Reply directly to ${data.email} or call ${data.phone}.</p>
+        <p style="margin:20px 0 0;font-size:13px;color:#888;">${contact}</p>
+        <p style="margin:8px 0 0;font-size:13px;"><a href="${SITE}/admin/events" style="color:#2F7D4F;">Open the Events inbox</a> to mark it Proposal sent, Booked or Lost.</p>
+      </div>
+    `,
+  });
+}
+
+export interface EventProposalEmailData {
+  to: string;
+  name: string;
+  proposalUrl: string;
+  eventDate: string; // already formatted, e.g. "Saturday, June 6, 2026"
+  packageName: string;
+  guests: number;
+  mathSteps: string[]; // from explainProposalSteps
+  depositLabel: string; // e.g. "$706"
+}
+
+// Only ever sent when the owner presses "Email to client" in the Events inbox
+export async function sendEventProposalEmail(data: EventProposalEmailData) {
+  const { to, name, proposalUrl, eventDate, packageName, guests, mathSteps, depositLabel } = data;
+  const steps = mathSteps
+    .map((s) => `<li style="margin:0 0 4px;">${escapeHtml(s)}</li>`)
+    .join("");
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    replyTo: process.env.ADMIN_EMAIL || undefined,
+    subject: `Your Amori Muori event proposal — ${eventDate}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#484D52;">
+        <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#484D5299;">Amori Muori</p>
+        <h2 style="color:#2F7D4F;margin:8px 0 16px;">Hi ${escapeHtml(name)}!</h2>
+        <p style="font-size:15px;line-height:1.6;">Thanks for thinking of us for your event on <strong>${escapeHtml(eventDate)}</strong>. Here's your proposal for ${guests} guests on the ${escapeHtml(packageName)} package:</p>
+        <ul style="font-size:14px;line-height:1.5;padding-left:18px;margin:12px 0 18px;">${steps}</ul>
+        <p style="font-size:15px;line-height:1.6;">To book, open the proposal, read the agreement, sign with your name, then pay the ${escapeHtml(depositLabel)} deposit to hold your date.</p>
+        <a href="${proposalUrl}" style="display:inline-block;background:#2F7D4F;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;margin:12px 0;">
+          View and sign your proposal →
+        </a>
+        <p style="color:#888;font-size:13px;line-height:1.5;">This link is just for you, so please don't share it. Questions? Reply to this email.</p>
       </div>
     `,
   });
