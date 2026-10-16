@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendBlast, sendOrderBlast } from "@/lib/email";
 import { getOrCreateReferralCode } from "@/lib/referrals";
+import { buildBlastAudiences, PAID_STATUSES, type AudienceOrder, type PastAudience } from "@/lib/blast-audiences";
 
 export async function GET() {
   const supabase = await createClient();
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // Past customers — generic blast, optionally with each customer's referral code
+  // All customers, 6+ weeks quiet, or ordered once — generic blast, optionally with each customer's referral code
   const withReferral = body.includeReferral === true;
 
   if (body.test) {
@@ -108,14 +109,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: orders } = await service.from("orders").select("customer_email").not("status", "in", '("cancelled","refunded","pending_payment")');
-  const emails = [
-    ...new Set(
-      (orders ?? [])
-        .map((o: { customer_email: string }) => o.customer_email?.toLowerCase())
-        .filter((e: string | undefined): e is string => !!e && !unsubSet.has(e))
-    ),
-  ];
+  // Rebuilt here rather than trusted from the page, with the same rules the counts used
+  const { data: orders } = await service.from("orders").select("customer_email, customer_phone, placed_at").in("status", [...PAID_STATUSES]);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const audience: PastAudience = body.audience === "lapsed" || body.audience === "once" ? body.audience : "past";
+  const emails = buildBlastAudiences((orders ?? []) as AudienceOrder[], unsubSet, today).audiences[audience].recipients;
 
   let referralCodes: Record<string, string> | undefined;
   if (withReferral) {

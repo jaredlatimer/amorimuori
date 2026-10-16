@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { formatBlastBody } from "@/lib/blast-format";
+import type { AudienceSummary, BlastAudiences, PastAudience } from "@/lib/blast-audiences";
 
 interface CurrentOrderRecipient {
   customer_name: string;
@@ -10,10 +11,23 @@ interface CurrentOrderRecipient {
   pickup_at: string;
 }
 
-interface Props {
-  pastRecipients: string[];
-  currentNight: { serviceDate: string; recipients: CurrentOrderRecipient[] } | null;
+interface UpcomingNight {
+  service_date: string;
+  service_start: string;
+  last_pickup: string;
 }
+
+interface Props {
+  audiences: BlastAudiences;
+  currentNight: { serviceDate: string; recipients: CurrentOrderRecipient[] } | null;
+  upcomingNights: UpcomingNight[];
+}
+
+type Audience = "current_orders" | PastAudience;
+
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
+const WIN_BACK_SUBJECT = "We're back on Fridays";
+const WIN_BACK_OFFER = "Welcome back: $5 off when you order 3 or more pizzas.";
 
 const inputStyle: React.CSSProperties = {
   padding: "10px 14px",
@@ -50,6 +64,52 @@ function formatTime(iso: string) {
   });
 }
 
+function shortDate(dateStr: string) {
+  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// "18:00:00" → "6:00"; the pm is added once for the whole window
+function clock(t: string) {
+  const [h, m] = t.split(":").map(Number);
+  return { text: `${h % 12 || 12}:${String(m).padStart(2, "0")}`, half: h < 12 ? "am" : "pm" };
+}
+
+function pickupWindow(start: string, end: string) {
+  const a = clock(start);
+  const b = clock(end);
+  return a.half === b.half ? `${a.text} to ${b.text} ${b.half}` : `${a.text} ${a.half} to ${b.text} ${b.half}`;
+}
+
+// Blast emails to these audiences have no per-customer fields, so the greeting stays general.
+// The referral code itself comes from the card the email adds below the message.
+function winBackBody(nights: UpcomingNight[], withOffer: boolean) {
+  return [
+    "We missed you.",
+    nights.length > 0
+      ? "The oven is lit again, and now it's on a schedule you can count on. Here are our next nights in Ashburn Farm:"
+      : "The oven is lit again, and now it's on a schedule you can count on. New dates are going up soon.",
+    ...nights.map((n) => `**${formatDate(n.service_date)}** · pickup ${pickupWindow(n.service_start, n.last_pickup)}`),
+    ...(withOffer ? [WIN_BACK_OFFER] : []),
+    "Your own referral code is just below. Share it with a friend: the cheaper of their first two pizzas is free, and you get the same deal once they pick up.",
+    `[See the menu](${SITE}/order)`,
+  ].join("\n");
+}
+
+// One plain sentence per audience saying where its number came from.
+function explainAudience(audience: PastAudience, a: BlastAudiences) {
+  const s: AudienceSummary = a.audiences[audience];
+  const base =
+    audience === "lapsed"
+      ? `${s.matched} of your ${a.totalCustomers} customers last ordered on ${shortDate(a.cutoffDate)} or earlier, so 6 weeks or more ago.`
+      : audience === "once"
+        ? `${s.matched} of your ${a.totalCustomers} customers have paid for exactly one order so far.`
+        : `Everyone who has paid for an order: all ${a.totalCustomers} of your customers.`;
+  const left: string[] = [];
+  if (s.unsubscribed > 0) left.push(`${s.unsubscribed} unsubscribed`);
+  if (s.noEmail > 0) left.push(`${s.noEmail} ${s.noEmail === 1 ? "has" : "have"} no email on file`);
+  return left.length > 0 ? `${base} ${left.join(" and ")}, so ${s.recipients.length} will get it.` : base;
+}
+
 const toolButtonStyle: React.CSSProperties = {
   background: "transparent",
   border: "1px solid #F8EAD520",
@@ -63,8 +123,8 @@ const toolButtonStyle: React.CSSProperties = {
   fontFamily: "var(--font-archivo), sans-serif",
 };
 
-export function BlastClient({ pastRecipients, currentNight }: Props) {
-  const [audience, setAudience] = useState<"past" | "current_orders">("current_orders");
+export function BlastClient({ audiences, currentNight, upcomingNights }: Props) {
+  const [audience, setAudience] = useState<Audience>("current_orders");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -76,6 +136,26 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [includeReferral, setIncludeReferral] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [showFormatHelp, setShowFormatHelp] = useState(false);
+  const [includeOffer, setIncludeOffer] = useState(false);
+  // The last body the template wrote, so the offer checkbox can update it until it's edited by hand
+  const templateBodyRef = useRef<string | null>(null);
+
+  function applyWinBackTemplate() {
+    const next = winBackBody(upcomingNights, includeOffer);
+    templateBodyRef.current = next;
+    setSubject(WIN_BACK_SUBJECT);
+    setBody(next);
+    setIncludeReferral(true);
+  }
+
+  function toggleOffer(on: boolean) {
+    setIncludeOffer(on);
+    if (templateBodyRef.current !== null && body === templateBodyRef.current) {
+      const next = winBackBody(upcomingNights, on);
+      templateBodyRef.current = next;
+      setBody(next);
+    }
+  }
 
   // Wrap the selected text (or a placeholder) in markers, keeping the selection on the inner text.
   function wrapSelection(before: string, after: string, placeholder: string) {
@@ -109,7 +189,9 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   }
 
   const currentRecipients = currentNight?.recipients ?? [];
-  const recipientCount = audience === "current_orders" ? currentRecipients.length : pastRecipients.length;
+  const isPast = audience !== "current_orders";
+  const pastRecipients = isPast ? audiences.audiences[audience].recipients : [];
+  const recipientCount = isPast ? pastRecipients.length : currentRecipients.length;
   const canSend = subject.trim().length > 0 && body.trim().length > 0 && (isTest || recipientCount > 0);
 
   const previewRecipient = currentRecipients[0];
@@ -129,8 +211,8 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
           body,
           audience,
           test: isTest || undefined,
-          eventDate: audience === "past" ? (eventDate || undefined) : undefined,
-          includeReferral: audience === "past" ? includeReferral : undefined,
+          eventDate: isPast ? (eventDate || undefined) : undefined,
+          includeReferral: isPast ? includeReferral : undefined,
         }),
       });
       const json = await res.json();
@@ -155,7 +237,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
             {isTest ? "Delivered to jared@latimerart.design." : `Delivered to ${sentCount} customer${sentCount !== 1 ? "s" : ""}.`}
           </p>
           <button
-            onClick={() => { setSubject(""); setBody(""); setEventDate(""); setStep("compose"); }}
+            onClick={() => { setSubject(""); setBody(""); setEventDate(""); templateBodyRef.current = null; setStep("compose"); }}
             style={{ background: "transparent", border: "1px solid #F8EAD520", color: "#F8EAD5aa", borderRadius: 10, padding: "10px 22px", fontSize: 14, cursor: "pointer", fontFamily: "var(--font-archivo), sans-serif" }}
           >
             {isTest ? "Try another" : "Send another"}
@@ -208,11 +290,18 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
       {/* Audience toggle */}
       <div style={{ marginBottom: 24 }}>
         <label style={labelStyle}>Audience</label>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
           {([
-            { value: "current_orders", label: "Tonight's orders", count: currentRecipients.length, disabled: !currentNight },
-            { value: "past", label: "Past customers", count: pastRecipients.length, disabled: false },
-          ] as const).map(({ value, label, count, disabled }) => {
+            {
+              value: "current_orders", label: "Tonight's orders", count: currentRecipients.length, disabled: !currentNight,
+              how: currentNight
+                ? `Everyone with an order for ${formatDate(currentNight.serviceDate)} who gave an email and hasn't unsubscribed.`
+                : "No service night is coming up, so there's no one to send to.",
+            },
+            { value: "past", label: "All customers", count: audiences.audiences.past.recipients.length, disabled: false, how: explainAudience("past", audiences) },
+            { value: "lapsed", label: "Haven't ordered in 6+ weeks", count: audiences.audiences.lapsed.recipients.length, disabled: false, how: explainAudience("lapsed", audiences) },
+            { value: "once", label: "Ordered only once", count: audiences.audiences.once.recipients.length, disabled: false, how: explainAudience("once", audiences) },
+          ] as const).map(({ value, label, count, disabled, how }) => {
             const active = audience === value;
             const isDisabled = disabled || isTest;
             return (
@@ -221,7 +310,6 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                 onClick={() => !isDisabled && setAudience(value)}
                 disabled={isDisabled}
                 style={{
-                  flex: 1,
                   padding: "11px 14px",
                   borderRadius: 10,
                   border: `1px solid ${active && !isTest ? "#2F7D4F" : "#F8EAD520"}`,
@@ -236,6 +324,9 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                 {label}
                 <span style={{ display: "block", fontSize: 12, fontWeight: 400, marginTop: 2, color: isDisabled ? "#F8EAD522" : active ? "#2F7D4Faa" : "#F8EAD544" }}>
                   {disabled ? "No service night" : `${count} recipient${count !== 1 ? "s" : ""}`}
+                </span>
+                <span style={{ display: "block", fontSize: 12, fontWeight: 400, marginTop: 6, lineHeight: 1.45, color: isDisabled ? "#F8EAD522" : "#F8EAD588" }}>
+                  {how}
                 </span>
               </button>
             );
@@ -264,7 +355,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
         </div>
       )}
 
-      {!isTest && audience === "past" && pastRecipients.length > 0 && (
+      {!isTest && isPast && pastRecipients.length > 0 && (
         <div style={{ marginBottom: 24, background: "#3A3E43", borderRadius: 12, padding: "14px 16px" }}>
           <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#F8EAD555", letterSpacing: 0.8, textTransform: "uppercase" }}>Recipients</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -277,6 +368,41 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
 
       {step === "compose" && (
         <div style={{ display: "grid", gap: 18 }}>
+          {isPast && (
+            <div style={{ background: "#3A3E43", borderRadius: 12, padding: "14px 16px", display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "#F8EAD5cc", lineHeight: 1.45, flex: "1 1 220px" }}>
+                  Win-back email: fills the subject and message with{" "}
+                  {upcomingNights.length > 0
+                    ? `your next ${upcomingNights.length} service night${upcomingNights.length !== 1 ? "s" : ""}`
+                    : "a note that new dates are coming"}
+                  , their referral code and a link to the menu.
+                </span>
+                <button
+                  type="button"
+                  onClick={applyWinBackTemplate}
+                  style={{ ...toolButtonStyle, height: 34, padding: "0 14px", fontWeight: 700, color: "#F8EAD5" }}
+                >
+                  Use win-back template
+                </button>
+              </div>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={includeOffer}
+                  onChange={(e) => toggleOffer(e.target.checked)}
+                  style={{ marginTop: 3, flexShrink: 0, accentColor: "#2F7D4F", width: 16, height: 16 }}
+                />
+                <span style={{ fontSize: 13, color: "#F8EAD5cc", lineHeight: 1.45 }}>
+                  Add the line &ldquo;{WIN_BACK_OFFER}&rdquo;
+                  <span style={{ display: "block", fontSize: 12, color: "#F8EAD566", marginTop: 2 }}>
+                    This only adds the sentence. Make sure the discount is working at checkout before you send it.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
           <div>
             <label style={labelStyle}>Subject line</label>
             <input
@@ -287,7 +413,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
             />
           </div>
 
-          {audience === "past" && (
+          {isPast && (
             <div>
               <label style={labelStyle}>Event date <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#F8EAD544" }}>(optional)</span></label>
               <input
@@ -299,7 +425,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
             </div>
           )}
 
-          {audience === "past" && (
+          {isPast && (
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -384,7 +510,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
               ? <>This is a <strong style={{ color: "#C9A227" }}>test</strong> — sending only to <strong style={{ color: "#F8EAD5" }}>jared@latimerart.design</strong>. No real customers will receive this.</>
               : audience === "current_orders"
                 ? <>This will send a <strong style={{ color: "#F8EAD5" }}>personalized email</strong> to <strong style={{ color: "#F8EAD5" }}>{recipientCount} customer{recipientCount !== 1 ? "s" : ""}</strong> with their specific pickup time. This can&rsquo;t be undone.</>
-                : <>This will email <strong style={{ color: "#F8EAD5" }}>{recipientCount} past customers</strong>. This can&rsquo;t be undone.</>
+                : <>This will email <strong style={{ color: "#F8EAD5" }}>{recipientCount} {audience === "lapsed" ? "customers who haven't ordered in 6+ weeks" : audience === "once" ? "customers who have ordered only once" : "past customers"}</strong>. This can&rsquo;t be undone.</>
             }
           </p>
           {error && <p style={{ fontSize: 13, color: "#E05555", marginBottom: 16 }}>{error}</p>}
@@ -423,7 +549,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                 <div style={{ textAlign: "center", marginBottom: 20 }}>
                   <p style={{ margin: "0 0 6px", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#F8EAD5aa", fontFamily: "Arial, sans-serif" }}>Amori Muori</p>
                   <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#F8EAD5", lineHeight: 1.2, fontFamily: "Georgia, serif" }}>{subject || "Your subject line"}</h2>
-                  {audience === "past" && formattedEventDate && (
+                  {isPast && formattedEventDate && (
                     <p style={{ margin: "8px 0 0", fontSize: 15, fontWeight: 700, color: "#2F7D4F", fontFamily: "Arial, sans-serif" }}>{formattedEventDate}</p>
                   )}
                 </div>
@@ -449,7 +575,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                     </div>
                   )}
 
-                  {audience === "past" && formattedEventDate && (
+                  {isPast && formattedEventDate && (
                     <div style={{ textAlign: "center", marginTop: 18 }}>
                       <span style={{ display: "inline-block", background: "#2F7D4F", color: "#F8EAD5", fontSize: 14, fontWeight: 700, padding: "12px 28px", borderRadius: 100, fontFamily: "Arial, sans-serif" }}>
                         Order now →
@@ -458,7 +584,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                   )}
                 </div>
 
-                {audience === "past" && includeReferral && (
+                {isPast && includeReferral && (
                   <div style={{ marginTop: 18, background: "#484D52", borderRadius: 16, padding: "22px 24px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "#E8C24A", fontWeight: 700, fontFamily: "Arial, sans-serif" }}>Give a friend a free pizza</p>
                     <p style={{ margin: "10px 0 0", fontSize: 30, fontWeight: 900, color: "#F8EAD5", letterSpacing: 2, fontFamily: "Arial, sans-serif" }}>AMOR-4817</p>
