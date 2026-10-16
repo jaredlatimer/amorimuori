@@ -158,7 +158,7 @@ export function OrderingClosed({ night }: OrderingClosedProps) {
       {night && parts && (
         <section
           aria-label="Next Friday Night Take"
-          className="cal-next rise"
+          className="oc-next rise"
           style={{
             marginTop: 28,
             textAlign: "left",
@@ -169,11 +169,11 @@ export function OrderingClosed({ night }: OrderingClosedProps) {
             animationDelay: ".15s",
           }}
         >
-          <div className="cal-datebox" style={{ alignSelf: "start", background: "#3A3E43", borderRadius: 16, padding: "14px 10px" }}>
+          <div className="oc-datebox" style={{ background: "#3A3E43", borderRadius: 16, padding: "14px 8px" }}>
             <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: "#E8C24A" }}>
               {parts.month}
             </span>
-            <span className="font-display" style={{ fontSize: 44, fontWeight: 900, lineHeight: 1 }}>
+            <span className="font-display oc-day" style={{ fontWeight: 900, lineHeight: 1 }}>
               {parts.day}
             </span>
             <span style={{ fontSize: 13, color: "#F8EAD5aa" }}>{parts.weekday}</span>

@@ -113,6 +113,25 @@ body {
   gap: 4px;
   text-align: center;
 }
+/* Ordering-closed screen: the date box stays a compact square beside the details, even on phones */
+.oc-next {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.oc-datebox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.oc-day { font-size: 44px; }
+@media (max-width: 520px) {
+  .oc-next { grid-template-columns: 68px minmax(0, 1fr); gap: 14px; }
+  .oc-day { font-size: 32px; }
+}
 .cal-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
