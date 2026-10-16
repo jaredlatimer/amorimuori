@@ -46,16 +46,18 @@ export async function ResultsView({ nightId, embedded = false }: { nightId?: str
 
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, status, subtotal_cents, tip_cents, total_cents")
+    .select("id, status, subtotal_cents, tip_cents, total_cents, discount_cents, bundle_discount_cents")
     .eq("service_night_id", n.id)
     .neq("status", "pending_payment");
 
-  const os = (orders ?? []) as { id: string; status: string; subtotal_cents: number; tip_cents: number; total_cents: number }[];
+  const os = (orders ?? []) as { id: string; status: string; subtotal_cents: number; tip_cents: number; total_cents: number; discount_cents: number | null; bundle_discount_cents: number | null }[];
 
   const confirmed = os.filter((o) => o.status !== "cancelled" && o.status !== "refunded");
   const cancelled = os.filter((o) => o.status === "cancelled");
 
-  const revenue = confirmed.reduce((s, o) => s + o.subtotal_cents, 0);
+  // Pizza revenue after the BOGO and family bundle come off, so Revenue + Tips = Total collected
+  const discounts = confirmed.reduce((s, o) => s + (o.discount_cents ?? 0) + (o.bundle_discount_cents ?? 0), 0);
+  const revenue = confirmed.reduce((s, o) => s + o.subtotal_cents, 0) - discounts;
   const tips = confirmed.reduce((s, o) => s + o.tip_cents, 0);
   const total = confirmed.reduce((s, o) => s + o.total_cents, 0);
 
@@ -92,7 +94,7 @@ export async function ResultsView({ nightId, embedded = false }: { nightId?: str
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 32 }}>
-          {statCard("Revenue", fmt(revenue))}
+          {statCard("Revenue", fmt(revenue), discounts > 0 ? `after ${fmt(discounts)} in discounts` : undefined)}
           {statCard("Tips", fmt(tips))}
           {statCard("Total collected", fmt(total))}
           {statCard("Orders", `${confirmed.length}`, cancelled.length > 0 ? `${cancelled.length} cancelled` : undefined)}

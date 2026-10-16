@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BUNDLE_LABEL } from "@/lib/family-bundle";
 
 function fmt(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -40,6 +41,7 @@ interface Order {
   total_cents: number;
   cancellable_until: string;
   discount_cents?: number | null;
+  bundle_discount_cents?: number | null;
   referral_kind?: string | null;
 }
 
@@ -416,6 +418,20 @@ export function ConfirmationContent({ order: initialOrder, items, referralCode }
                 {order.referral_kind === "reward" ? "Your BOGO reward" : "Friend BOGO"}, cheaper pizza free
               </span>
               <span>−{fmt(order.discount_cents ?? 0)}</span>
+            </div>
+          )}
+          {(order.bundle_discount_cents ?? 0) > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#256340",
+              }}
+            >
+              <span>{BUNDLE_LABEL}</span>
+              <span>−{fmt(order.bundle_discount_cents ?? 0)}</span>
             </div>
           )}
           <div

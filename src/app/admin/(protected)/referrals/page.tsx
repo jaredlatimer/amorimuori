@@ -23,6 +23,7 @@ interface RawOrder {
   customer_email: string;
   subtotal_cents: number;
   discount_cents: number;
+  bundle_discount_cents: number;
   referral_kind: "friend" | "reward" | null;
   order_items: { quantity: number }[] | null;
 }
@@ -44,7 +45,7 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
     supabase.from("service_nights").select("id, service_date").eq("is_enabled", true).order("service_date", { ascending: true }),
     supabase
       .from("orders")
-      .select("id, service_night_id, customer_email, subtotal_cents, discount_cents, referral_kind, order_items(quantity)")
+      .select("id, service_night_id, customer_email, subtotal_cents, discount_cents, bundle_discount_cents, referral_kind, order_items(quantity)")
       .in("status", PAID_STATUSES)
       .limit(10000),
     supabase.from("referral_rewards").select("referrer_email, friend_name, earned_at, expires_at, redeemed_at"),
@@ -58,6 +59,7 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
     customer_email: o.customer_email ?? "",
     subtotal_cents: o.subtotal_cents,
     discount_cents: o.discount_cents ?? 0,
+    bundle_discount_cents: o.bundle_discount_cents ?? 0,
     referral_kind: o.referral_kind,
     pizzas: (o.order_items ?? []).reduce((s, i) => s + i.quantity, 0),
   }));
