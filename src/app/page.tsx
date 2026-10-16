@@ -161,6 +161,9 @@ export default async function Home() {
         }}
       >
         <LogoLockup />
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <a href="/events" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Events</a>
+        <a href="/calendar" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Calendar</a>
         <a
           href="/order"
           className="am-btn"
@@ -174,6 +177,7 @@ export default async function Home() {
         >
           {isOpen ? "Order now" : `Opens ${openDayName}`}
         </a>
+        </div>
       </nav>
 
       {/* Hero */}
