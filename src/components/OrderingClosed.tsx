@@ -169,7 +169,7 @@ export function OrderingClosed({ night }: OrderingClosedProps) {
             animationDelay: ".15s",
           }}
         >
-          <div className="cal-datebox" style={{ background: "#3A3E43", borderRadius: 16, padding: "14px 10px" }}>
+          <div className="cal-datebox" style={{ alignSelf: "start", background: "#3A3E43", borderRadius: 16, padding: "14px 10px" }}>
             <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: "#E8C24A" }}>
               {parts.month}
             </span>
