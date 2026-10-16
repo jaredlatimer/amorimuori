@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CancelOrderModal, type CancelMode } from "../CancelOrderModal";
 
 type OrderStatus =
   | "new"
@@ -24,6 +25,7 @@ interface Order {
   total_cents: number;
   placed_at: string;
   arrived_at: string | null;
+  stripe_payment_intent_id: string | null;
 }
 
 interface Item {
@@ -107,6 +109,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
   const [pizzaStates, setPizzaStates] = useState<Map<string, string>>(new Map());
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
+  const [cancelTarget, setCancelTarget] = useState<{ order: Order; mode: CancelMode } | null>(null);
   const [toasts, setToasts] = useState<{ id: string; message: string; color: string; exiting: boolean }[]>([]);
 
   function addToast(message: string, color = "#2F7D4F") {
@@ -136,6 +139,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
       total_cents: 3100,
       placed_at: new Date().toISOString(),
       arrived_at: null,
+      stripe_payment_intent_id: null,
     };
     const fakeItem: Item = { order_id: id, pizza_name: "Margherita", quantity: 2, unit_price_cents: 1400 };
     prevIdsRef.current = new Set([...prevIdsRef.current, id]);
@@ -152,7 +156,7 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
     const { data: freshOrders } = await supabase
       .from("orders")
       .select(
-        "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at, arrived_at"
+        "id, code, customer_name, customer_phone, pickup_at, status, subtotal_cents, tip_cents, total_cents, placed_at, arrived_at, stripe_payment_intent_id"
       )
       .eq("service_night_id", serviceNight.id)
       .neq("status", "pending_payment")
@@ -259,6 +263,40 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     );
+  }
+
+  /** Plain cancel (no money back). Resolves to an error message, or null on success. */
+  async function cancelOrder(order: Order): Promise<string | null> {
+    const res = await fetch("/api/admin/update-order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, status: "cancelled" }),
+    }).catch(() => null);
+    if (!res) return "Couldn't reach the server. Check your connection and try again.";
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      return data?.error ?? "Couldn't cancel the order. Try again.";
+    }
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "cancelled" } : o)));
+    addToast(`${order.customer_name}'s order cancelled (no refund)`, "#60403F");
+    refetch();
+    return null;
+  }
+
+  /** Cancel & refund the card through Stripe. Resolves to an error message, or null on success. */
+  async function refundOrder(order: Order): Promise<string | null> {
+    const res = await fetch("/api/admin/refund-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id }),
+    }).catch(() => null);
+    if (!res) return "Couldn't reach the server. Check your connection and try again.";
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return data?.error ?? "Refund failed. The order was not changed.";
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "refunded" } : o)));
+    addToast(`Refunded ${fmt(data.refundedCents ?? order.total_cents)} to ${order.customer_name}`, "#60403F");
+    refetch();
+    return null;
   }
 
   // Summary stats
@@ -381,12 +419,26 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
               glowing={glowingIds.has(order.id)}
               arrived={order.arrived_at !== null}
               pizzaStates={pizzaStates}
-              onCancel={() => updateStatus(order.id, "cancelled")}
+              onCancel={(mode) => setCancelTarget({ order, mode })}
               onRestore={() => updateStatus(order.id, "new")}
               onArrived={() => markArrived(order)}
             />
           ))}
         </div>
+      )}
+
+      {cancelTarget && (
+        <CancelOrderModal
+          mode={cancelTarget.mode}
+          customerName={cancelTarget.order.customer_name}
+          code={cancelTarget.order.code}
+          amountCents={cancelTarget.order.total_cents}
+          canRefund={!!cancelTarget.order.stripe_payment_intent_id}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={() =>
+            cancelTarget.mode === "refund" ? refundOrder(cancelTarget.order) : cancelOrder(cancelTarget.order)
+          }
+        />
       )}
 
       {/* Toasts */}
@@ -443,11 +495,11 @@ function OrderCard({
   glowing: boolean;
   arrived: boolean;
   pizzaStates: Map<string, string>;
-  onCancel: () => void;
+  onCancel: (mode: CancelMode) => void;
   onRestore: () => void;
   onArrived: () => void;
 }) {
-  const [confirmAction, setConfirmAction] = useState<"cancel" | "restore" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"restore" | null>(null);
   const [glowState, setGlowState] = useState<"hold" | "animating" | "done">("done");
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -482,15 +534,6 @@ function OrderCard({
 
   const actions = (
     <div className="order-card-actions">
-      {confirmAction === "cancel" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Cancel this order?</span>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => setConfirmAction(null)} style={{ ...btnBase, background: "#F8EAD510", color: "#F8EAD5aa" }}>Keep it</button>
-            <button onClick={() => { setConfirmAction(null); onCancel(); }} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>Yes, cancel</button>
-          </div>
-        </div>
-      )}
       {confirmAction === "restore" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 12, color: "#F8EAD5aa" }}>Restore to queue?</span>
@@ -513,8 +556,13 @@ function OrderCard({
             </button>
           )}
           {canCancel && (
-            <button onClick={() => setConfirmAction("cancel")} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>
-              Cancel
+            <button onClick={() => onCancel("cancel")} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>
+              Cancel (no refund)
+            </button>
+          )}
+          {canCancel && order.stripe_payment_intent_id && (
+            <button onClick={() => onCancel("refund")} disabled={updating} style={{ ...btnBase, background: "#60403F", color: "#F8EAD5", fontWeight: 700 }}>
+              Cancel &amp; refund {fmt(order.total_cents)}
             </button>
           )}
         </div>
