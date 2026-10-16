@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { sendConfirmationEmail, sendAdminOrderNotification } from "@/lib/email";
 import { getCustomerHistory } from "@/lib/customer-history";
 import { generateConfirmationCopy, SUBJECT_LINES } from "@/lib/confirmation-copy";
+import { getOrCreateReferralCode, redeemReferralReward } from "@/lib/referrals";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     // Find the order + items by stripe_payment_intent_id
     const { data: order } = await supabase
       .from("orders")
-      .select("id, code, customer_name, customer_email, customer_phone, pickup_at, subtotal_cents, tip_cents, total_cents, status")
+      .select("id, code, customer_name, customer_email, customer_phone, pickup_at, subtotal_cents, tip_cents, total_cents, status, discount_cents, referral_kind, referral_reward_id")
       .eq("stripe_payment_intent_id", pi.id)
       .single();
 
@@ -68,7 +69,17 @@ export async function POST(request: Request) {
       subtotal_cents: number;
       tip_cents: number;
       total_cents: number;
+      discount_cents: number | null;
+      referral_kind: string | null;
+      referral_reward_id: string | null;
     };
+
+    // Referral BOGO: use up the reward this order applied, and make sure the
+    // customer has their own code to share
+    if (o.referral_reward_id) {
+      await redeemReferralReward(supabase, o.referral_reward_id, o.id);
+    }
+    const referralCode = await getOrCreateReferralCode(supabase, o.customer_email, o.customer_name);
 
     console.log(`Order ${o.code} confirmed — pickup ${o.pickup_at}`);
 
@@ -108,6 +119,14 @@ export async function POST(request: Request) {
         subtotalCents: o.subtotal_cents,
         tipCents: o.tip_cents,
         totalCents: o.total_cents,
+        discountCents: o.discount_cents ?? 0,
+        discountLabel:
+          o.referral_kind === "friend"
+            ? "Friend BOGO, cheaper pizza free"
+            : o.referral_kind === "reward"
+            ? "Your BOGO reward, cheaper pizza free"
+            : undefined,
+        referralCode: referralCode ?? undefined,
         items: typedItems,
         introCopy: confirmationCopy,
         subject: SUBJECT_LINES[history.segment],

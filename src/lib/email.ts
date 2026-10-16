@@ -46,13 +46,26 @@ export interface ConfirmationEmailData {
   subtotalCents: number;
   tipCents: number;
   totalCents: number;
+  discountCents?: number;
+  discountLabel?: string;
+  referralCode?: string;
   items: { pizza_name: string; quantity: number; unit_price_cents: number }[];
   introCopy?: string;
   subject?: string;
 }
 
 export async function sendConfirmationEmail(data: ConfirmationEmailData) {
-  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, items, introCopy, subject } = data;
+  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, discountCents, discountLabel, referralCode, items, introCopy, subject } = data;
+
+  const discountRow =
+    discountCents && discountCents > 0
+      ? `<tr>
+          <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;font-family:Arial,sans-serif;">${discountLabel ?? "Discount"}</td>
+          <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;text-align:right;font-family:Arial,sans-serif;">−${fmt(discountCents)}</td>
+        </tr>`
+      : "";
+
+  const referralBlock = referralCode ? referralShareBlock(referralCode) : "";
 
   const itemRows = items
     .map(
@@ -135,6 +148,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
                   <td style="padding:4px 0;font-size:14px;color:#484D5299;font-family:Arial,sans-serif;">Subtotal</td>
                   <td style="padding:4px 0;font-size:14px;color:#484D5299;text-align:right;font-family:Arial,sans-serif;">${fmt(subtotalCents)}</td>
                 </tr>
+                ${discountRow}
                 ${tipRow}
                 <tr>
                   <td style="padding:10px 0 0;font-size:19px;font-weight:900;color:#484D52;border-top:1.5px solid #484D5215;">Total</td>
@@ -162,6 +176,8 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
             </td>
           </tr>
 
+          ${referralBlock}
+
           <!-- Footer -->
           <tr>
             <td style="padding:24px 0 0;text-align:center;">
@@ -182,6 +198,94 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
     from: FROM,
     to,
     subject: subject ?? `Order ${code} confirmed — see you tonight!`,
+    html,
+  });
+}
+
+// ── Referral BOGO ──────────────────────────────────────────────────────────────
+
+// A table row (for the 520px email layout) inviting the customer to share their code
+function referralShareBlock(referralCode: string): string {
+  return `<tr>
+            <td style="padding-top:18px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#3A3E43;border-radius:16px;">
+                <tr>
+                  <td style="padding:22px 24px;text-align:center;">
+                    <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#E8C24A;font-weight:700;font-family:Arial,sans-serif;">Give a friend a free pizza</p>
+                    <p style="margin:10px 0 0;font-size:30px;font-weight:900;color:#F8EAD5;letter-spacing:2px;font-family:Arial,sans-serif;">${referralCode}</p>
+                    <p style="margin:10px 0 0;font-size:14px;color:#F8EAD5cc;line-height:1.55;font-family:Arial,sans-serif;">
+                      Share your code. On a friend's first order of two pizzas, the cheaper one is free.
+                      When they pick up, you get the same deal on your next order.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>`;
+}
+
+export interface ReferralRewardEmailData {
+  to: string;
+  name: string;
+  friendName: string;
+  referralCode: string;
+  expiresAt: string;
+}
+
+export async function sendReferralRewardEmail(data: ReferralRewardEmailData) {
+  const { to, name, friendName, referralCode, expiresAt } = data;
+  const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
+  const firstName = name.trim().split(" ")[0] || "friend";
+  const friend = friendName || "Your friend";
+  const useBy = new Date(expiresAt).toLocaleDateString("en-US", {
+    month: "long", day: "numeric", timeZone: "America/New_York",
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Your next pizza is on us</title>
+</head>
+<body style="margin:0;padding:0;background:#484D52;font-family:Georgia,serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#484D52;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:520px;">
+          <tr>
+            <td style="padding-bottom:28px;text-align:center;">
+              <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E8C24A;font-family:Arial,sans-serif;">Reward unlocked</p>
+              <h1 style="margin:10px 0 0;font-size:34px;font-weight:900;color:#F8EAD5;line-height:1.1;">Your next pizza is on us, ${firstName}.</h1>
+              <p style="margin:14px 0 0;font-size:16px;color:#F8EAD5cc;font-family:Arial,sans-serif;line-height:1.6;">
+                ${friend} just picked up their first Amori Muori order with your code. Thank you for sharing!
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#F8EAD5;border-radius:16px;padding:26px;text-align:center;">
+              <p style="margin:0;font-size:24px;font-weight:900;color:#484D52;">Buy one, get one</p>
+              <p style="margin:10px 0 0;font-size:15px;color:#484D52;font-family:Arial,sans-serif;line-height:1.6;">
+                Order two pizzas and the cheaper one is free. It's added at checkout automatically when you use this email.
+              </p>
+              <p style="margin:10px 0 0;font-size:13px;color:#484D5299;font-family:Arial,sans-serif;">Use by ${useBy}. One reward per order.</p>
+              <div style="margin-top:20px;">
+                <a href="${SITE}/order" style="display:inline-block;background:#2F7D4F;color:#F8EAD5;text-decoration:none;font-family:Arial,sans-serif;font-size:16px;font-weight:700;padding:16px 38px;border-radius:100px;">Start your order →</a>
+              </div>
+            </td>
+          </tr>
+          ${referralShareBlock(referralCode)}
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: `${friend} picked up. Your next pizza is on us!`,
     html,
   });
 }
@@ -714,9 +818,10 @@ export interface BlastData {
   subject: string;
   body: string;
   eventDate?: string; // "YYYY-MM-DD"
+  referralCodes?: Record<string, string>; // lower-cased email → code, adds a share-your-code card
 }
 
-export async function sendBlast({ emails, subject, body, eventDate }: BlastData): Promise<number> {
+export async function sendBlast({ emails, subject, body, eventDate, referralCodes }: BlastData): Promise<number> {
   if (emails.length === 0) return 0;
 
   const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com";
@@ -785,6 +890,8 @@ export async function sendBlast({ emails, subject, body, eventDate }: BlastData)
               </p>` : ""}
             </td>
           </tr>
+
+          ${referralCodes?.[email.toLowerCase()] ? referralShareBlock(referralCodes[email.toLowerCase()]) : ""}
 
           <!-- Footer -->
           <tr>

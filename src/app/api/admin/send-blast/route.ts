@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendBlast, sendOrderBlast } from "@/lib/email";
+import { getOrCreateReferralCode } from "@/lib/referrals";
 
 export async function GET() {
   const supabase = await createClient();
@@ -89,10 +90,17 @@ export async function POST(request: Request) {
     }
   }
 
-  // Past customers — generic blast
+  // Past customers — generic blast, optionally with each customer's referral code
+  const withReferral = body.includeReferral === true;
+
   if (body.test) {
     try {
-      await sendBlast({ emails: [TEST_EMAIL], subject: body.subject, body: body.body, eventDate: body.eventDate ?? undefined });
+      let referralCodes: Record<string, string> | undefined;
+      if (withReferral) {
+        const testCode = await getOrCreateReferralCode(service, TEST_EMAIL, "Jared");
+        if (testCode) referralCodes = { [TEST_EMAIL]: testCode };
+      }
+      await sendBlast({ emails: [TEST_EMAIL], subject: body.subject, body: body.body, eventDate: body.eventDate ?? undefined, referralCodes });
       return NextResponse.json({ sent: 1 });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -109,8 +117,20 @@ export async function POST(request: Request) {
     ),
   ];
 
+  let referralCodes: Record<string, string> | undefined;
+  if (withReferral) {
+    referralCodes = {};
+    const { data: codes } = await service.from("referral_codes").select("code, email").in("email", emails);
+    for (const c of (codes ?? []) as { code: string; email: string }[]) referralCodes[c.email] = c.code;
+    // Customers the migration backfill missed get a code now
+    for (const e of emails.filter((e) => !referralCodes![e])) {
+      const code = await getOrCreateReferralCode(service, e, "");
+      if (code) referralCodes[e] = code;
+    }
+  }
+
   try {
-    const sent = await sendBlast({ emails, subject: body.subject, body: body.body, eventDate: body.eventDate ?? undefined });
+    const sent = await sendBlast({ emails, subject: body.subject, body: body.body, eventDate: body.eventDate ?? undefined, referralCodes });
     return NextResponse.json({ sent });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

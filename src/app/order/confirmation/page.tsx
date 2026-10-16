@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getOrCreateReferralCode } from "@/lib/referrals";
 import { ConfirmationContent } from "./ConfirmationContent";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ async function ConfirmationLoader({ code }: { code: string }) {
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, code, customer_name, pickup_at, status, subtotal_cents, tip_cents, total_cents, cancellable_until"
+      "id, code, customer_name, pickup_at, status, subtotal_cents, tip_cents, total_cents, cancellable_until, discount_cents, referral_kind"
     )
     .eq("code", code)
     .single();
@@ -26,8 +27,22 @@ async function ConfirmationLoader({ code }: { code: string }) {
         .eq("order_id", order.id)
     : { data: [] };
 
+  // The customer's own code to share, once the order is paid
+  let referralCode: string | null = null;
+  if (order && order.status !== "pending_payment") {
+    const service = await createServiceClient();
+    const { data: owner } = await service
+      .from("orders")
+      .select("customer_email, customer_name")
+      .eq("id", order.id)
+      .single();
+    const o = owner as { customer_email: string; customer_name: string } | null;
+    if (o) referralCode = await getOrCreateReferralCode(service, o.customer_email, o.customer_name);
+  }
+
   return (
     <ConfirmationContent
+      referralCode={referralCode}
       order={
         order as {
           id: string;
@@ -39,6 +54,8 @@ async function ConfirmationLoader({ code }: { code: string }) {
           tip_cents: number;
           total_cents: number;
           cancellable_until: string;
+          discount_cents: number | null;
+          referral_kind: string | null;
         } | null
       }
       items={

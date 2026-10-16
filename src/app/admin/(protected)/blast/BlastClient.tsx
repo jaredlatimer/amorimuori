@@ -59,6 +59,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [isTest, setIsTest] = useState(false);
+  const [includeReferral, setIncludeReferral] = useState(false);
 
   const currentRecipients = currentNight?.recipients ?? [];
   const recipientCount = audience === "current_orders" ? currentRecipients.length : pastRecipients.length;
@@ -82,6 +83,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
           audience,
           test: isTest || undefined,
           eventDate: audience === "past" ? (eventDate || undefined) : undefined,
+          includeReferral: audience === "past" ? includeReferral : undefined,
         }),
       });
       const json = await res.json();
@@ -248,6 +250,20 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                 onChange={(e) => setEventDate(e.target.value)}
               />
             </div>
+          )}
+
+          {audience === "past" && (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={includeReferral}
+                onChange={(e) => setIncludeReferral(e.target.checked)}
+                style={{ marginTop: 3, flexShrink: 0, accentColor: "#2F7D4F", width: 16, height: 16 }}
+              />
+              <span style={{ fontSize: 13, color: "#F8EAD5cc", lineHeight: 1.45 }}>
+                Add each customer&apos;s referral code (give a friend a free pizza, get one back)
+              </span>
+            </label>
           )}
 
           <div>

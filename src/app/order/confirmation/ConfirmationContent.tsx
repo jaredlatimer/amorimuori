@@ -39,6 +39,8 @@ interface Order {
   tip_cents: number;
   total_cents: number;
   cancellable_until: string;
+  discount_cents?: number | null;
+  referral_kind?: string | null;
 }
 
 interface Item {
@@ -50,9 +52,11 @@ interface Item {
 interface Props {
   order: Order | null;
   items: Item[];
+  referralCode?: string | null;
 }
 
-export function ConfirmationContent({ order: initialOrder, items }: Props) {
+export function ConfirmationContent({ order: initialOrder, items, referralCode }: Props) {
+  const [codeCopied, setCodeCopied] = useState(false);
   const [order, setOrder] = useState(initialOrder);
   const [polling, setPolling] = useState(
     initialOrder?.status === "pending_payment"
@@ -398,6 +402,22 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
               <span>{fmt(order.tip_cents)}</span>
             </div>
           )}
+          {(order.discount_cents ?? 0) > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#256340",
+              }}
+            >
+              <span>
+                {order.referral_kind === "reward" ? "Your BOGO reward" : "Friend BOGO"}, cheaper pizza free
+              </span>
+              <span>−{fmt(order.discount_cents ?? 0)}</span>
+            </div>
+          )}
           <div
             style={{
               display: "flex",
@@ -443,6 +463,58 @@ export function ConfirmationContent({ order: initialOrder, items }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Referral BOGO: share your code ── */}
+      {confirmed && referralCode && (
+        <div
+          style={{
+            marginTop: 20,
+            padding: "20px",
+            background: "#3A3E43",
+            border: "1px solid #F8EAD514",
+            borderRadius: 16,
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              fontWeight: 700,
+              color: "#E8C24A",
+            }}
+          >
+            Give a friend a free pizza
+          </div>
+          <div style={{ fontSize: 30, fontWeight: 900, letterSpacing: 2, marginTop: 8 }}>
+            {referralCode}
+          </div>
+          <p style={{ fontSize: 14, color: "#F8EAD5cc", lineHeight: 1.5, margin: "8px 0 14px" }}>
+            On a friend&apos;s first order of two pizzas, the cheaper one is free. When they pick up,
+            you get the same deal on your next order.
+          </p>
+          <button
+            type="button"
+            className="am-btn"
+            onClick={() => {
+              navigator.clipboard
+                ?.writeText(referralCode)
+                .then(() => setCodeCopied(true))
+                .catch(() => {});
+            }}
+            style={{
+              background: "#2F7D4F",
+              color: "#F8EAD5",
+              padding: "12px 28px",
+              borderRadius: 12,
+              fontSize: 15,
+            }}
+          >
+            {codeCopied ? "Copied!" : "Copy code"}
+          </button>
+        </div>
+      )}
 
       {/* ── Cancellation section ── */}
       {confirmed && (
