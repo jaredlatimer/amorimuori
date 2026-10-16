@@ -46,6 +46,8 @@ interface Props {
   allNights: ServiceNight[];
   initialOrders: Order[];
   initialItems: Item[];
+  /** Shown inside a night's page, which has its own header and night picker */
+  embedded?: boolean;
 }
 
 function fmt(cents: number) {
@@ -98,7 +100,7 @@ const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
   ready: "Picked up ✓",
 };
 
-export function OrdersClient({ serviceNight, allNights, initialOrders, initialItems }: Props) {
+export function OrdersClient({ serviceNight, allNights, initialOrders, initialItems, embedded = false }: Props) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [items, setItems] = useState<Item[]>(initialItems);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -271,9 +273,9 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
   const sortedOrders = [...orders].sort((a, b) => new Date(a.pickup_at).getTime() - new Date(b.pickup_at).getTime());
 
   return (
-    <div style={{ paddingTop: 32 }}>
+    <div style={{ paddingTop: embedded ? 20 : 32 }}>
       {/* Night selector */}
-      {allNights.length > 1 && (
+      {!embedded && allNights.length > 1 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
           {[...allNights].reverse().map((n) => {
             const active = n.id === serviceNight.id;
@@ -318,9 +320,9 @@ export function OrdersClient({ serviceNight, allNights, initialOrders, initialIt
         <div>
           <h1
             className="font-display"
-            style={{ fontSize: 28, fontWeight: 900, margin: 0 }}
+            style={{ fontSize: embedded ? 20 : 28, fontWeight: 900, margin: 0 }}
           >
-            Tonight's Orders
+            Orders
           </h1>
           <p style={{ color: "#F8EAD566", fontSize: 14, margin: "4px 0 0" }}>
             {formatDate(serviceNight.service_date)} ·{" "}

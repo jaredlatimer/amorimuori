@@ -27,10 +27,7 @@ const SECTIONS: Section[] = [
     label: "Nights",
     icon: "nights",
     pages: [
-      { label: "Orders", href: "/admin/orders" },
-      { label: "Shopping", href: "/admin/shopping" },
-      { label: "Stock", href: "/admin/inventory" },
-      { label: "Results", href: "/admin/dashboard" },
+      { label: "All nights", href: "/admin/nights" },
     ],
   },
   {
@@ -44,7 +41,12 @@ const SECTIONS: Section[] = [
   {
     label: "Customers",
     icon: "people",
-    pages: [{ label: "Blast", href: "/admin/blast" }],
+    pages: [
+      { label: "Customers", href: "/admin/customers" },
+      { label: "Rewards", href: "/admin/rewards" },
+      { label: "Blast", href: "/admin/blast" },
+      { label: "Reminders", href: "/admin/reminders" },
+    ],
   },
   {
     label: "Settings",

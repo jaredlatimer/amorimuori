@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-interface PricedIngredient {
+export interface PricedIngredient {
   id: string;
   name: string;
   price_cents: number;
   yield_pizzas: number;
 }
 
-interface Pizza {
+export interface Pizza {
   id: string;
   name: string;
   price_cents: number;
@@ -306,9 +306,10 @@ export function CostsClient({ pricedIngredients: initial, allIngredientNames, pi
   );
 }
 
-function NightSummary({
-  serviceNights, selectedNightId, setSelectedNightId, pizzas, pricedByName,
+export function NightSummary({
+  serviceNights, selectedNightId, setSelectedNightId, pizzas, pricedByName, hideSelector = false,
 }: {
+  hideSelector?: boolean;
   serviceNights: ServiceNight[];
   selectedNightId: string;
   setSelectedNightId: (id: string) => void;
@@ -408,7 +409,7 @@ function NightSummary({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {/* Night selector */}
-      {(() => {
+      {!hideSelector && (() => {
         const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
         const upcoming = serviceNights.filter((n) => n.service_date >= today).reverse();
         const past = serviceNights.filter((n) => n.service_date < today);

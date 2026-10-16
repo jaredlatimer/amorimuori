@@ -22,13 +22,14 @@ interface Props {
   pizzas: Pizza[];
   sold: Record<string, number>;
   totalSold: number;
+  embedded?: boolean;
 }
 
 function fmtDate(d: string) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-export function InventoryClient({ serviceNight, allNights, pizzas, sold, totalSold }: Props) {
+export function InventoryClient({ serviceNight, allNights, pizzas, sold, totalSold, embedded = false }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [overrides, setOverrides] = useState<Record<string, boolean>>(serviceNight.sold_out_overrides ?? {});
@@ -54,9 +55,9 @@ export function InventoryClient({ serviceNight, allNights, pizzas, sold, totalSo
   );
 
   return (
-    <div style={{ paddingTop: 32, maxWidth: 720 }}>
+    <div style={{ paddingTop: embedded ? 20 : 32, maxWidth: 720 }}>
       {/* Night selector */}
-      {allNights.length > 1 && (
+      {!embedded && allNights.length > 1 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
           {[...allNights].reverse().map((n) => {
             const active = n.id === serviceNight.id;
@@ -88,7 +89,7 @@ export function InventoryClient({ serviceNight, allNights, pizzas, sold, totalSo
       )}
 
       <div style={{ marginBottom: 28 }}>
-        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 4px" }}>Inventory</h1>
+        <h1 className="font-display" style={{ fontSize: embedded ? 20 : 28, fontWeight: 900, margin: "0 0 4px" }}>Stock</h1>
         <p style={{ color: "#F8EAD566", fontSize: 14, margin: 0 }}>{fmtDate(serviceNight.service_date)}</p>
       </div>
 
