@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  calcDoughBatch, doughCountdown, formatStepTime, DOUGH_SCHEDULES, type DoughFormula,
+} from "@/lib/dough";
 
 interface Props {
-  serviceNight: { id: string; service_date: string };
+  serviceNight: { id: string; service_date: string; service_start: string };
   totalPizzas: number;
+  glutenFreePizzas: number;
+  doughFormula: DoughFormula;
+  doughFormulaSaved: boolean;
   ingredients: { name: string; count: number }[];
   initialCheckedKeys: string[];
   initialCustomItems: { id: string; itemKey: string; label: string; isChecked: boolean }[];
@@ -20,7 +26,10 @@ function formatDate(dateStr: string) {
   });
 }
 
-export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initialCheckedKeys, initialCustomItems }: Props) {
+export function ShoppingClient({
+  serviceNight, totalPizzas, glutenFreePizzas, doughFormula, doughFormulaSaved,
+  ingredients, initialCheckedKeys, initialCustomItems,
+}: Props) {
   const supabase = createClient();
   const [checked, setChecked] = useState<CheckedState>(() =>
     Object.fromEntries(initialCheckedKeys.map(k => [k, true]))
@@ -145,15 +154,17 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
 
       {/* Dough */}
       <SectionHeader label="Dough" />
-      <div style={{ marginBottom: 28 }}>
-        <Row
-          label={`${totalPizzas} dough ball${totalPizzas !== 1 ? "s" : ""}`}
-          sub={`${(totalPizzas * 220).toLocaleString()}g total`}
-          isChecked={!!checked[DOUGH_KEY]}
-          onToggle={() => toggle(DOUGH_KEY, "Dough")}
-          large
-        />
-      </div>
+      <DoughCard
+        nightId={serviceNight.id}
+        serviceDate={serviceNight.service_date}
+        firstPickup={serviceNight.service_start}
+        regularPizzas={totalPizzas - glutenFreePizzas}
+        glutenFreePizzas={glutenFreePizzas}
+        formula={doughFormula}
+        formulaSaved={doughFormulaSaved}
+        isChecked={!!checked[DOUGH_KEY]}
+        onToggle={() => toggle(DOUGH_KEY, "Dough")}
+      />
 
       {/* Ingredients */}
       {ingredients.length > 0 && (
@@ -224,6 +235,138 @@ export function ShoppingClient({ serviceNight, totalPizzas, ingredients, initial
         >
           Add
         </button>
+      </div>
+    </div>
+  );
+}
+
+const fmt = (n: number) => n.toLocaleString("en-US");
+const plural = (n: number, word: string) => `${fmt(n)} ${word}${n !== 1 ? "s" : ""}`;
+
+// Regular dough from the formula, plus the GF count and the mix-to-ball timeline
+function DoughCard({
+  nightId, serviceDate, firstPickup, regularPizzas, glutenFreePizzas, formula, formulaSaved, isChecked, onToggle,
+}: {
+  nightId: string; serviceDate: string; firstPickup: string;
+  regularPizzas: number; glutenFreePizzas: number;
+  formula: DoughFormula; formulaSaved: boolean;
+  isChecked: boolean; onToggle: () => void;
+}) {
+  // Walk-up extras are a quick guess for this device only, so they stay in the browser
+  const storageKey = `dough-extra-${nightId}`;
+  const [extraText, setExtraText] = useState("");
+  useEffect(() => {
+    try { setExtraText(localStorage.getItem(storageKey) ?? ""); } catch { /* storage blocked */ }
+  }, [storageKey]);
+  function changeExtra(value: string) {
+    setExtraText(value);
+    try { localStorage.setItem(storageKey, value); } catch { /* storage blocked */ }
+  }
+  const extra = Math.max(0, Math.floor(Number(extraText) || 0));
+
+  const batch = calcDoughBatch(regularPizzas + extra, formula);
+  const steps = doughCountdown(serviceDate, firstPickup, formula.schedule);
+  const scheduleLabel = DOUGH_SCHEDULES.find((s) => s.key === formula.schedule)?.label ?? formula.schedule;
+
+  const muted = { fontSize: 13, color: "#F8EAD577", margin: 0, lineHeight: 1.5 } as const;
+  const ingredientRows = [
+    { name: "Flour", amount: `${fmt(batch.flour_g)} g`, note: `about ${batch.flour_lb.toFixed(1)} lb` },
+    { name: "Water", amount: `${fmt(batch.water_g)} g`, note: `${formula.hydration_pct}% of the flour` },
+    { name: "Salt", amount: `${fmt(batch.salt_g)} g`, note: `${formula.salt_pct}% of the flour` },
+    { name: "Instant dry yeast", amount: `${batch.yeast_g.toFixed(1)} g`, note: `${formula.yeast_pct}% of the flour` },
+  ];
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <Row
+        label={`Regular dough: ${plural(batch.balls, "ball")}`}
+        sub={`${fmt(batch.totalDough_g)} g`}
+        isChecked={isChecked}
+        onToggle={onToggle}
+        large
+      />
+
+      <div style={{ background: "#484D52", border: "1px solid #F8EAD510", borderRadius: 10, padding: "14px", marginTop: 2, display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <label htmlFor="dough-extra" style={{ fontSize: 14, color: "#F8EAD5cc", flex: 1, minWidth: 160 }}>
+            Extra balls for walk-ups
+          </label>
+          <input
+            id="dough-extra"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            placeholder="0"
+            value={extraText}
+            onChange={(e) => changeExtra(e.target.value)}
+            style={{
+              width: 80, padding: "8px 10px", borderRadius: 8,
+              border: "1px solid #F8EAD520", background: "#3A3E43",
+              color: "#F8EAD5", fontSize: 15, textAlign: "right",
+              fontFamily: "var(--font-archivo), sans-serif", outline: "none",
+            }}
+          />
+        </div>
+
+        <p style={muted}>
+          {plural(regularPizzas, "pizza")} ordered{extra > 0 ? ` + ${fmt(extra)} extra` : ""} = {plural(batch.balls, "ball")}.
+          {glutenFreePizzas > 0 && ` Gluten free pizzas aren't counted here.`}
+        </p>
+
+        {batch.balls > 0 ? (
+          <>
+            <p style={{ ...muted, color: "#F8EAD5cc", fontSize: 14 }}>
+              {plural(batch.balls, "ball")} × {fmt(formula.ball_g)} g = {fmt(batch.baseDough_g)} g,
+              plus {formula.buffer_pct}% spare = <strong style={{ color: "#F8EAD5" }}>{fmt(batch.totalDough_g)} g of dough</strong>.
+            </p>
+            <p style={muted}>
+              Water, salt and yeast are each a share of the flour, so the flour is{" "}
+              {fmt(batch.totalDough_g)} g ÷ {batch.percentSum.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")} = {fmt(batch.flour_g)} g.
+            </p>
+            <div style={{ display: "grid", gap: 2 }}>
+              {ingredientRows.map((r) => (
+                <div key={r.name} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "8px 10px", background: "#3A3E43", borderRadius: 8 }}>
+                  <span style={{ flex: 1, fontSize: 15, color: "#F8EAD5" }}>{r.name}</span>
+                  <span style={{ fontSize: 12, color: "#F8EAD566" }}>{r.note}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "#F8EAD5", minWidth: 72, textAlign: "right" }}>{r.amount}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p style={muted}>No regular dough needed yet.</p>
+        )}
+
+        <p style={{ ...muted, fontSize: 12, color: formulaSaved ? "#F8EAD555" : "#E8C24A" }}>
+          {formulaSaved
+            ? <>Formula: {fmt(formula.ball_g)} g balls, {formula.buffer_pct}% spare. Change it in <a href="/admin/settings" style={{ color: "#F8EAD5aa" }}>Settings</a>.</>
+            : <>Using the default formula. Run migration 015_dough_formula.sql to save your own.</>}
+        </p>
+      </div>
+
+      {/* Gluten free: bought or made differently, so just the count */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginTop: 8, border: "1px dashed #F8EAD522", borderRadius: 10 }}>
+        <span style={{ flex: 1, fontSize: 15, color: "#F8EAD5" }}>
+          Gluten free dough: {plural(glutenFreePizzas, "ball")}
+        </span>
+        <span style={{ fontSize: 12, color: "#F8EAD566" }}>separate oven</span>
+      </div>
+
+      {/* Countdown */}
+      <div style={{ marginTop: 18 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#F8EAD577", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+          {scheduleLabel} dough timeline
+        </div>
+        <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
+          {steps.map((step) => (
+            <li key={step.at + step.label} style={{ fontSize: 14, color: "#F8EAD5cc", lineHeight: 1.45 }}>
+              <strong style={{ color: "#F8EAD5" }}>{formatStepTime(step.at)}:</strong> {step.label}
+            </li>
+          ))}
+        </ol>
+        <p style={{ ...muted, fontSize: 12, marginTop: 10 }}>
+          Hot kitchen? Halve the yeast. Cold kitchen? Give it more time, not more yeast.
+        </p>
       </div>
     </div>
   );
