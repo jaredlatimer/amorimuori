@@ -67,6 +67,7 @@ export interface OrderRow {
   customer_email: string;
   subtotal_cents: number;
   discount_cents: number;
+  bundle_discount_cents: number; // family bundle; never on the same order as a BOGO
   referral_kind: "friend" | "reward" | null;
   pizzas: number;
 }
@@ -133,10 +134,10 @@ export function measureNights(allNights: NightRow[], orders: OrderRow[], fromDat
         r.guests += 1;
         r.guestPizzas += o.pizzas;
         r.guestSubtotal += o.subtotal_cents;
-        r.guestDiscount += o.discount_cents;
+        r.guestDiscount += o.discount_cents + o.bundle_discount_cents;
       } else if (o.referral_kind === "reward") {
         r.rewardsUsed += 1;
-        r.rewardDiscount += o.discount_cents;
+        r.rewardDiscount += o.discount_cents + o.bundle_discount_cents;
         const orderedBefore = orders.some(
           (p) => p.id !== o.id && p.service_night_id && lookback.has(p.service_night_id) && email(p) === email(o)
         );
@@ -150,7 +151,7 @@ export function measureNights(allNights: NightRow[], orders: OrderRow[], fromDat
         if (first !== undefined && first < i) {
           r.back += 1;
           r.backPizzas += o.pizzas;
-          r.backSubtotal += o.subtotal_cents - o.discount_cents;
+          r.backSubtotal += o.subtotal_cents - o.discount_cents - o.bundle_discount_cents;
         }
       }
     }

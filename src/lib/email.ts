@@ -49,6 +49,8 @@ export interface ConfirmationEmailData {
   totalCents: number;
   discountCents?: number;
   discountLabel?: string;
+  bundleDiscountCents?: number;
+  bundleLabel?: string;
   referralCode?: string;
   items: { pizza_name: string; quantity: number; unit_price_cents: number }[];
   introCopy?: string;
@@ -56,13 +58,21 @@ export interface ConfirmationEmailData {
 }
 
 export async function sendConfirmationEmail(data: ConfirmationEmailData) {
-  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, discountCents, discountLabel, referralCode, items, introCopy, subject } = data;
+  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, discountCents, discountLabel, bundleDiscountCents, bundleLabel, referralCode, items, introCopy, subject } = data;
 
   const discountRow =
     discountCents && discountCents > 0
       ? `<tr>
           <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;font-family:Arial,sans-serif;">${discountLabel ?? "Discount"}</td>
           <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;text-align:right;font-family:Arial,sans-serif;">−${fmt(discountCents)}</td>
+        </tr>`
+      : "";
+
+  const bundleRow =
+    bundleDiscountCents && bundleDiscountCents > 0
+      ? `<tr>
+          <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;font-family:Arial,sans-serif;">${bundleLabel ?? "Bundle discount"}</td>
+          <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;text-align:right;font-family:Arial,sans-serif;">−${fmt(bundleDiscountCents)}</td>
         </tr>`
       : "";
 
@@ -150,6 +160,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
                   <td style="padding:4px 0;font-size:14px;color:#484D5299;text-align:right;font-family:Arial,sans-serif;">${fmt(subtotalCents)}</td>
                 </tr>
                 ${discountRow}
+                ${bundleRow}
                 ${tipRow}
                 <tr>
                   <td style="padding:10px 0 0;font-size:19px;font-weight:900;color:#484D52;border-top:1.5px solid #484D5215;">Total</td>
@@ -339,10 +350,11 @@ export interface PostPickupEmailData {
   code: string;
   introCopy: string;
   subject: string;
+  orderAgainUrl: string;
 }
 
 export async function sendPostPickupEmail(data: PostPickupEmailData) {
-  const { to, name, introCopy, subject } = data;
+  const { to, name, introCopy, subject, orderAgainUrl } = data;
   await resend.emails.send({
     from: FROM,
     to,
@@ -364,6 +376,9 @@ export async function sendPostPickupEmail(data: PostPickupEmailData) {
               <strong>@amorimuori</strong> on Instagram.
             </p>
             <p style="margin:16px 0 0;font-size:15px;color:#484D52;font-family:Arial,sans-serif;">We'd love to see it.</p>
+            <div style="margin:24px 0 0;text-align:center;">
+              <a href="${orderAgainUrl}" style="display:inline-block;background:#2F7D4F;color:#F8EAD5;text-decoration:none;font-family:Arial,sans-serif;font-size:16px;font-weight:700;padding:14px 34px;border-radius:100px;">Order again →</a>
+            </div>
             <p style="margin:24px 0 0;font-size:15px;color:#484D5299;font-family:Arial,sans-serif;">— Amori Muori</p>
           </td>
         </tr>

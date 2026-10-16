@@ -27,6 +27,12 @@ export const SUBJECT_LINES: Record<CustomerSegment, string> = {
   regular: "Thanks, as always",
 };
 
+// "Order again" link. /order prefills the pizzas from this order, nothing else.
+export function orderAgainUrl(code: string): string {
+  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://amorimuori.com").replace(/\/$/, "");
+  return `${site}/order?again=${encodeURIComponent(code)}`;
+}
+
 function buildUserMessage(history: CustomerHistory, pizzaList: string): string {
   const { segment, totalOrders, weeksSinceLastOrder } = history;
 
