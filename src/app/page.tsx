@@ -375,7 +375,7 @@ export default async function Home() {
             </p>
           </div>
           <a
-            href="/catering"
+            href="/events"
             className="am-btn"
             style={{
               background: "#2F7D4F",
