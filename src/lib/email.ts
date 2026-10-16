@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { createHmac } from "crypto";
+import { formatBlastBody } from "./blast-format";
 
 const resend = new Resend(process.env.RESEND_API_KEY ?? "no-key");
 
@@ -729,11 +730,7 @@ export async function sendOrderBlast({
   const BATCH_SIZE = 50;
   let sent = 0;
 
-  const messageHtml = message
-    .split("\n")
-    .filter((l) => l.trim())
-    .map((l) => `<p style="margin:0 0 12px;font-size:16px;color:#484D52;font-family:Arial,sans-serif;line-height:1.6;">${l}</p>`)
-    .join("");
+  const messageHtml = formatBlastBody(message);
 
   for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
     const chunk = recipients.slice(i, i + BATCH_SIZE);
@@ -832,11 +829,7 @@ export async function sendBlast({ emails, subject, body, eventDate, referralCode
       })
     : null;
 
-  const bodyHtml = body
-    .split("\n")
-    .filter((l) => l.trim())
-    .map((l) => `<p style="margin:0 0 12px;font-size:16px;color:#484D52;font-family:Arial,sans-serif;line-height:1.6;">${l}</p>`)
-    .join("");
+  const bodyHtml = formatBlastBody(body);
 
   const BATCH_SIZE = 100;
   let sent = 0;

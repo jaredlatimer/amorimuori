@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { formatBlastBody } from "@/lib/blast-format";
 
 interface CurrentOrderRecipient {
   customer_name: string;
@@ -49,6 +50,19 @@ function formatTime(iso: string) {
   });
 }
 
+const toolButtonStyle: React.CSSProperties = {
+  background: "transparent",
+  border: "1px solid #F8EAD520",
+  color: "#F8EAD5cc",
+  borderRadius: 8,
+  minWidth: 34,
+  height: 30,
+  padding: "0 10px",
+  fontSize: 14,
+  cursor: "pointer",
+  fontFamily: "var(--font-archivo), sans-serif",
+};
+
 export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [audience, setAudience] = useState<"past" | "current_orders">("current_orders");
   const [subject, setSubject] = useState("");
@@ -60,6 +74,38 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const [isTest, setIsTest] = useState(false);
   const [includeReferral, setIncludeReferral] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  // Wrap the selected text (or a placeholder) in markers, keeping the selection on the inner text.
+  function wrapSelection(before: string, after: string, placeholder: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = body.slice(start, end) || placeholder;
+    const next = body.slice(0, start) + before + selected + after + body.slice(end);
+    setBody(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  }
+
+  function insertLink() {
+    const el = bodyRef.current;
+    if (!el) return;
+    const url = window.prompt("Link address", "https://amorimuori.com/order");
+    if (!url) return;
+    wrapSelection("[", `](${url.trim()})`, "link text");
+  }
+
+  function onBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const key = e.key.toLowerCase();
+    if (key === "b") { e.preventDefault(); wrapSelection("**", "**", "bold text"); }
+    else if (key === "i") { e.preventDefault(); wrapSelection("*", "*", "italic text"); }
+    else if (key === "k") { e.preventDefault(); insertLink(); }
+  }
 
   const currentRecipients = currentNight?.recipients ?? [];
   const recipientCount = audience === "current_orders" ? currentRecipients.length : pastRecipients.length;
@@ -273,7 +319,17 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                 Each email will open with "Hi [Name]," and close with their pickup time.
               </p>
             )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+              <button type="button" title="Bold (⌘B)" onClick={() => wrapSelection("**", "**", "bold text")} style={{ ...toolButtonStyle, fontWeight: 900 }}>B</button>
+              <button type="button" title="Italic (⌘I)" onClick={() => wrapSelection("*", "*", "italic text")} style={{ ...toolButtonStyle, fontStyle: "italic", fontFamily: "Georgia, serif" }}>I</button>
+              <button type="button" title="Link (⌘K)" onClick={insertLink} style={toolButtonStyle}>Link</button>
+              <span style={{ fontSize: 12, color: "#F8EAD544", marginLeft: 4 }}>
+                **bold** · *italic* · [text](url)
+              </span>
+            </div>
             <textarea
+              ref={bodyRef}
+              onKeyDown={onBodyKeyDown}
               style={{ ...inputStyle, resize: "vertical", minHeight: 140, lineHeight: 1.6 }}
               placeholder={audience === "current_orders"
                 ? "Pizza's coming off the oven right on time — see you tonight!"
@@ -365,10 +421,9 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                       Hi {previewRecipient?.customer_name ?? "[Name]"},
                     </p>
                   )}
-                  {body ? (
-                    body.split("\n").filter(l => l.trim()).map((line, i) => (
-                      <p key={i} style={{ margin: "0 0 10px", fontSize: 15, color: "#484D52", lineHeight: 1.6, fontFamily: "Arial, sans-serif" }}>{line}</p>
-                    ))
+                  {body.trim() ? (
+                    // Same HTML the sent email uses, so formatting looks identical.
+                    <div dangerouslySetInnerHTML={{ __html: formatBlastBody(body) }} />
                   ) : (
                     <p style={{ margin: 0, fontSize: 15, color: "#484D5255", fontStyle: "italic", fontFamily: "Arial, sans-serif" }}>Your message will appear here.</p>
                   )}
