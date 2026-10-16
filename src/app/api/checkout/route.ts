@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/server";
-import { bogoDiscountCents, resolveReferralDiscount } from "@/lib/referrals";
+import { bogoDiscountCents, resolveReferralDiscount, type ReferralDiscount } from "@/lib/referrals";
+import { parseReferralVia } from "@/lib/referral-share";
+import { BUNDLE_PHRASE, bundleDiscountCents, bundleSummary, chooseDiscount } from "@/lib/family-bundle";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -21,7 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn, referralCode } =
+  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn, referralCode, referralVia } =
     body as {
       serviceNightId: string;
       quantities: Record<string, number>;
@@ -32,6 +34,7 @@ export async function POST(request: Request) {
       email: string;
       smsOptIn?: boolean;
       referralCode?: string | null;
+      referralVia?: string | null;
     };
 
   if (!serviceNightId || !quantities || !pickupSlot || !name || !phone || !email) {
@@ -135,27 +138,44 @@ export async function POST(request: Request) {
   if (!referral.ok) {
     return NextResponse.json({ error: referral.error, referralError: true }, { status: 400 });
   }
-  const discount = referral.discount;
-  const discountCents =
-    discount.kind === "none"
-      ? 0
-      : bogoDiscountCents(lineItems.map(({ pizza, qty }) => ({ unitPriceCents: pizza.price_cents, qty })));
+  const priceLines = lineItems.map(({ pizza, qty }) => ({ unitPriceCents: pizza.price_cents, qty }));
+  const qualifiedBogoCents = referral.discount.kind === "none" ? 0 : bogoDiscountCents(priceLines);
+
+  // ── Family bundle: doesn't combine with the BOGO, so keep whichever saves more ─
+  const { bogoCents: discountCents, bundleCents } = chooseDiscount(priceLines, qualifiedBogoCents);
+  // A reward the bundle beat stays unused for a later order. A friend's code the
+  // bundle beat still counts as their referral.
+  const discount: ReferralDiscount =
+    referral.discount.kind === "reward" && discountCents === 0 ? { kind: "none" } : referral.discount;
   const discountLabel =
-    discount.kind === "friend"
+    discountCents === 0
+      ? null
+      : discount.kind === "friend"
       ? `${discount.referrerName ? `${discount.referrerName}'s` : "Friend"} BOGO, cheaper pizza free`
       : discount.kind === "reward"
       ? "Your BOGO reward, cheaper pizza free"
       : null;
+  const bundleLabel = bundleCents > 0 ? bundleSummary(priceLines) : null;
+  // When both would apply, say which one we used
+  const bothQualified = qualifiedBogoCents > 0 && bundleDiscountCents(priceLines) > 0;
+  const discountNote = !bothQualified
+    ? null
+    : bundleCents > 0
+    ? `${BUNDLE_PHRASE} saves more than the free pizza, so we used that. The two don't combine.${
+        referral.discount.kind === "reward" ? " Your BOGO reward is kept for a later order." : ""
+      }`
+    : `Your free pizza saves more than ${BUNDLE_PHRASE}, so we used that. The two don't combine.`;
   const referralFields = {
     referral_code: discount.kind === "friend" ? discount.code : null,
     referral_kind: discount.kind === "none" ? null : discount.kind,
     referral_reward_id: discount.kind === "reward" ? discount.rewardId : null,
     discount_cents: discountCents,
+    bundle_discount_cents: bundleCents,
   };
 
-  // Tip is figured on the full pizza price, before the free pizza comes off
+  // Tip is figured on the full pizza price, before the free pizza or bundle comes off
   const tipAmt = tipPct != null ? Math.round(subtotalCents * (tipPct / 100)) : 0;
-  const totalCents = subtotalCents - discountCents + tipAmt;
+  const totalCents = subtotalCents - discountCents - bundleCents + tipAmt;
 
   if (totalCents <= 0) {
     return NextResponse.json({ error: "Invalid total" }, { status: 400 });
@@ -314,6 +334,13 @@ export async function POST(request: Request) {
     order = insertedOrder;
   }
 
+  // Which share button brought this guest. Separate and best-effort, so checkout
+  // still works before migration 012 adds the column.
+  const via = discount.kind === "friend" ? parseReferralVia(referralVia) : null;
+  if (via || isReused) {
+    await supabase.from("orders").update({ referral_via: via }).eq("id", order.id);
+  }
+
   // ── Insert order items ────────────────────────────────────────────────────────
   const items = lineItems.map(({ pizza, qty }) => ({
     order_id: order.id,
@@ -374,5 +401,8 @@ export async function POST(request: Request) {
     totalCents,
     discountCents,
     discountLabel,
+    bundleDiscountCents: bundleCents,
+    bundleLabel,
+    discountNote,
   });
 }

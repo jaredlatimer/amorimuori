@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { referralShareMessages } from "@/lib/referral-share";
+import { BUNDLE_LABEL } from "@/lib/family-bundle";
 
 function fmt(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -29,6 +31,41 @@ function fmtWindow(cancellableUntil: string, secsLeft: number): { text: string; 
   return { text: `${m}:${s}`, urgent: true };
 }
 
+const shareButtonStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 6,
+  background: "transparent",
+  border: "1px solid #F8EAD533",
+  color: "#F8EAD5",
+  textDecoration: "none",
+  padding: "12px 6px",
+  borderRadius: 12,
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "var(--font-archivo), sans-serif",
+};
+
+function ShareIcon({ d }: { d: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
 interface Order {
   id: string;
   code: string;
@@ -40,6 +77,7 @@ interface Order {
   total_cents: number;
   cancellable_until: string;
   discount_cents?: number | null;
+  bundle_discount_cents?: number | null;
   referral_kind?: string | null;
 }
 
@@ -57,6 +95,7 @@ interface Props {
 
 export function ConfirmationContent({ order: initialOrder, items, referralCode }: Props) {
   const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [order, setOrder] = useState(initialOrder);
   const [polling, setPolling] = useState(
     initialOrder?.status === "pending_payment"
@@ -418,6 +457,20 @@ export function ConfirmationContent({ order: initialOrder, items, referralCode }
               <span>−{fmt(order.discount_cents ?? 0)}</span>
             </div>
           )}
+          {(order.bundle_discount_cents ?? 0) > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#256340",
+              }}
+            >
+              <span>{BUNDLE_LABEL}</span>
+              <span>−{fmt(order.bundle_discount_cents ?? 0)}</span>
+            </div>
+          )}
           <div
             style={{
               display: "flex",
@@ -513,6 +566,55 @@ export function ConfirmationContent({ order: initialOrder, items, referralCode }
           >
             {codeCopied ? "Copied!" : "Copy code"}
           </button>
+
+          {/* Share buttons. Each link carries the code and the channel (?via=) */}
+          {(() => {
+            const share = referralShareMessages(referralCode, order.customer_name);
+            return (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 8,
+                  marginTop: 14,
+                }}
+              >
+                <a
+                  href={`sms:?&body=${encodeURIComponent(share.text)}`}
+                  className="am-btn"
+                  style={shareButtonStyle}
+                >
+                  <ShareIcon d="M4 5h16v11H9l-5 4z" />
+                  Text
+                </a>
+                <a
+                  href={`mailto:?subject=${encodeURIComponent(share.emailSubject)}&body=${encodeURIComponent(share.emailBody)}`}
+                  className="am-btn"
+                  style={shareButtonStyle}
+                >
+                  <ShareIcon d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 7l9 6 9-6" />
+                  Email
+                </a>
+                <button
+                  type="button"
+                  className="am-btn"
+                  onClick={() => {
+                    navigator.clipboard
+                      ?.writeText(share.link)
+                      .then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 1500);
+                      })
+                      .catch(() => {});
+                  }}
+                  style={shareButtonStyle}
+                >
+                  <ShareIcon d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+                  <span aria-live="polite">{linkCopied ? "Copied" : "Copy link"}</span>
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
 

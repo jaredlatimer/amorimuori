@@ -6,6 +6,8 @@ import { stripePromise } from "@/lib/stripe-client";
 import { CheckoutFormInner } from "@/components/CheckoutForm";
 import type { Pizza } from "@/lib/types";
 import type { PizzaAvailability } from "@/lib/availability";
+import type { ReferralVia } from "@/lib/referral-share";
+import { bundleDiscountCents, bundleNudge, bundleSummary, FAMILY_BUNDLE } from "@/lib/family-bundle";
 
 type CheckoutState =
   | { stage: "form" }
@@ -17,6 +19,9 @@ type CheckoutState =
       totalCents: number;
       discountCents: number;
       discountLabel: string | null;
+      bundleDiscountCents: number;
+      bundleLabel: string | null;
+      discountNote: string | null;
     }
   | { stage: "error"; message: string };
 
@@ -52,6 +57,10 @@ interface OrderFormProps {
   availability: Record<string, PizzaAvailability>;
   poolRemaining: number;
   nightlyTotal: number;
+  initialReferralCode?: string;
+  referralVia?: ReferralVia | null;
+  initialQty?: Record<string, number>;
+  prefillNote?: string | null;
 }
 
 export function OrderForm({
@@ -61,11 +70,15 @@ export function OrderForm({
   availability,
   poolRemaining,
   nightlyTotal,
+  initialReferralCode = "",
+  referralVia = null,
+  initialQty,
+  prefillNote = null,
 }: OrderFormProps) {
   const isTonight =
     serviceDate ===
     new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  const [qty, setQty] = useState<Record<string, number>>({});
+  const [qty, setQty] = useState<Record<string, number>>(initialQty ?? {});
   const [slots, setSlots] = useState<string[]>([]);
   const [slot, setSlot] = useState("");
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -74,7 +87,7 @@ export function OrderForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [smsOptIn, setSmsOptIn] = useState(false);
-  const [referralCode, setReferralCode] = useState("");
+  const [referralCode, setReferralCode] = useState(initialReferralCode);
   const [checkout, setCheckout] = useState<CheckoutState>({ stage: "form" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,7 +100,13 @@ export function OrderForm({
   );
   const tipAmt =
     tipPct !== null ? Math.round(subtotal * (tipPct / 100)) : 0;
-  const total = subtotal + tipAmt;
+
+  // Family bundle preview. The server recomputes it at checkout and may swap in a
+  // referral BOGO instead, but only when that saves more, so this total never goes up.
+  const priceLines = cartItems.map((p) => ({ unitPriceCents: p.price_cents, qty: qty[p.id] ?? 0 }));
+  const bundlePreview = bundleDiscountCents(priceLines);
+  const nudge = bundleNudge(totalPizzas);
+  const total = subtotal - bundlePreview + tipAmt;
 
   // Remaining pool after what's in this cart
   const effectivePool = Math.max(0, poolRemaining - totalPizzas);
@@ -167,6 +186,8 @@ export function OrderForm({
           email,
           smsOptIn,
           referralCode: referralCode.trim() || null,
+          // Credit the share button only if the guest kept the code from the link
+          referralVia: referralVia && referralCode.trim() === initialReferralCode ? referralVia : null,
         }),
       });
       const data = await res.json();
@@ -194,6 +215,9 @@ export function OrderForm({
         totalCents: data.totalCents,
         discountCents: data.discountCents ?? 0,
         discountLabel: data.discountLabel ?? null,
+        bundleDiscountCents: data.bundleDiscountCents ?? 0,
+        bundleLabel: data.bundleLabel ?? null,
+        discountNote: data.discountNote ?? null,
       });
     } catch {
       setCheckout({ stage: "error", message: "Network error. Please try again." });
@@ -530,6 +554,21 @@ export function OrderForm({
             Your order
           </h3>
 
+          {/* "Order again" prefill note */}
+          {prefillNote && checkout.stage !== "payment" && (
+            <p
+              style={{
+                fontSize: 13.5,
+                color: "#256340",
+                fontWeight: 700,
+                lineHeight: 1.45,
+                margin: "10px 0 0",
+              }}
+            >
+              {prefillNote}
+            </p>
+          )}
+
           {totalPizzas === 0 ? (
             <p style={{ color: "#484D5299", marginTop: 14, fontSize: 15 }}>
               No pizzas yet — add some from the menu.
@@ -580,6 +619,26 @@ export function OrderForm({
                     <span>{checkout.discountLabel ?? "Discount"}</span>
                     <span>−{fmt(checkout.discountCents)}</span>
                   </div>
+                )}
+                {checkout.bundleDiscountCents > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: "#256340",
+                    }}
+                  >
+                    <span>{checkout.bundleLabel ?? "Bundle discount"}</span>
+                    <span style={{ whiteSpace: "nowrap" }}>−{fmt(checkout.bundleDiscountCents)}</span>
+                  </div>
+                )}
+                {checkout.discountNote && (
+                  <p style={{ fontSize: 12.5, color: "#484D5299", lineHeight: 1.45, margin: 0 }}>
+                    {checkout.discountNote}
+                  </p>
                 )}
                 <div
                   style={{
@@ -829,6 +888,24 @@ export function OrderForm({
                   <span>Subtotal</span>
                   <span>{fmt(subtotal)}</span>
                 </div>
+                {bundlePreview > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      fontSize: 14.5,
+                      fontWeight: 700,
+                      color: "#256340",
+                    }}
+                  >
+                    <span>{bundleSummary(priceLines)}</span>
+                    <span style={{ whiteSpace: "nowrap" }}>−{fmt(bundlePreview)}</span>
+                  </div>
+                )}
+                {nudge && (
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#256340" }}>{nudge}</div>
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -947,6 +1024,8 @@ export function OrderForm({
                 <p style={{ fontSize: 12.5, color: "#484D5299", lineHeight: 1.45, margin: 0 }}>
                   First order with us? A friend&apos;s code makes the cheaper of two pizzas free.
                   Earned a free pizza? It&apos;s added on the next step automatically.
+                  {totalPizzas >= FAMILY_BUNDLE.minPizzas &&
+                    " A free pizza and the bundle don't combine, so you get whichever saves more."}
                 </p>
               </div>
 

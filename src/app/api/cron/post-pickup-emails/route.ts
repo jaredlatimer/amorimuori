@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getCustomerHistory } from "@/lib/customer-history";
-import { generatePostPickupCopy, SUBJECT_LINES } from "@/lib/post-pickup-copy";
+import { generatePostPickupCopy, orderAgainUrl, SUBJECT_LINES } from "@/lib/post-pickup-copy";
 import { sendPostPickupEmail } from "@/lib/email";
 
 export async function GET(request: Request) {
@@ -66,6 +66,7 @@ export async function GET(request: Request) {
         code: order.code,
         introCopy: copy,
         subject: SUBJECT_LINES[history.segment],
+        orderAgainUrl: orderAgainUrl(order.code),
       });
 
       sent++;

@@ -5,6 +5,7 @@ import { sendConfirmationEmail, sendAdminOrderNotification } from "@/lib/email";
 import { getCustomerHistory } from "@/lib/customer-history";
 import { generateConfirmationCopy, SUBJECT_LINES } from "@/lib/confirmation-copy";
 import { getOrCreateReferralCode, redeemReferralReward } from "@/lib/referrals";
+import { BUNDLE_LABEL } from "@/lib/family-bundle";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     // Find the order + items by stripe_payment_intent_id
     const { data: order } = await supabase
       .from("orders")
-      .select("id, code, customer_name, customer_email, customer_phone, pickup_at, subtotal_cents, tip_cents, total_cents, status, discount_cents, referral_kind, referral_reward_id")
+      .select("id, code, customer_name, customer_email, customer_phone, pickup_at, subtotal_cents, tip_cents, total_cents, status, discount_cents, bundle_discount_cents, referral_kind, referral_reward_id")
       .eq("stripe_payment_intent_id", pi.id)
       .single();
 
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       tip_cents: number;
       total_cents: number;
       discount_cents: number | null;
+      bundle_discount_cents: number | null;
       referral_kind: string | null;
       referral_reward_id: string | null;
     };
@@ -126,6 +128,8 @@ export async function POST(request: Request) {
             : o.referral_kind === "reward"
             ? "Your BOGO reward, cheaper pizza free"
             : undefined,
+        bundleDiscountCents: o.bundle_discount_cents ?? 0,
+        bundleLabel: BUNDLE_LABEL,
         referralCode: referralCode ?? undefined,
         items: typedItems,
         introCopy: confirmationCopy,

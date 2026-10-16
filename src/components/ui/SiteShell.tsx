@@ -27,17 +27,18 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <LogoLockup />
         </a>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        <a href="/events" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Events</a>
-        <a
-          href="/"
-          style={{
-            fontSize: 14,
-            color: "#F8EAD5aa",
-            textDecoration: "none",
-          }}
-        >
-          ← Back to home
-        </a>
+          <a href="/events" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Events</a>
+          <a href="/calendar" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Calendar</a>
+          <a
+            href="/"
+            style={{
+              fontSize: 14,
+              color: "#F8EAD5aa",
+              textDecoration: "none",
+            }}
+          >
+            ← Back to home
+          </a>
         </div>
       </nav>
 

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_DOUGH_FORMULA, formulaFromSettingsRow, isGlutenFree } from "@/lib/dough";
 import { ShoppingClient } from "./ShoppingClient";
 
 export async function ShoppingView({ nightId }: { nightId?: string }) {
@@ -6,10 +7,10 @@ export async function ShoppingView({ nightId }: { nightId?: string }) {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
   const { data: rawNight } = nightId
-    ? await supabase.from("service_nights").select("id, service_date").eq("id", nightId).maybeSingle()
+    ? await supabase.from("service_nights").select("id, service_date, service_start").eq("id", nightId).maybeSingle()
     : await supabase
         .from("service_nights")
-        .select("id, service_date")
+        .select("id, service_date, service_start")
         .eq("is_enabled", true)
         .gte("service_date", today)
         .order("service_date", { ascending: true })
@@ -25,7 +26,7 @@ export async function ShoppingView({ nightId }: { nightId?: string }) {
     );
   }
 
-  const night = rawNight as { id: string; service_date: string };
+  const night = rawNight as { id: string; service_date: string; service_start: string };
 
   // Orders → pizza quantities
   const { data: existingOrders } = await supabase
@@ -52,15 +53,17 @@ export async function ShoppingView({ nightId }: { nightId?: string }) {
   // Aggregate ingredients
   const orderedPizzaIds = Object.keys(pizzaQtys);
   const ingCounts: Record<string, number> = {};
+  let glutenFreePizzas = 0;
 
   if (orderedPizzaIds.length > 0) {
     const { data: rawPizzas } = await supabase
       .from("pizzas")
-      .select("id, ingredients")
+      .select("id, name, ingredients")
       .in("id", orderedPizzaIds);
 
-    for (const pizza of (rawPizzas ?? []) as { id: string; ingredients: string[] }[]) {
+    for (const pizza of (rawPizzas ?? []) as { id: string; name: string; ingredients: string[] }[]) {
       const qty = pizzaQtys[pizza.id] ?? 0;
+      if (isGlutenFree(pizza.name ?? "")) glutenFreePizzas += qty;
       for (const ing of (pizza.ingredients ?? [])) {
         ingCounts[ing] = (ingCounts[ing] ?? 0) + qty;
       }
@@ -70,6 +73,10 @@ export async function ShoppingView({ nightId }: { nightId?: string }) {
   const ingredients = Object.entries(ingCounts)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([name, count]) => ({ name, count }));
+
+  // Dough formula lives on settings; null means migration 015 hasn't been run
+  const { data: settingsRow } = await supabase.from("settings").select("*").limit(1).maybeSingle();
+  const doughFormula = formulaFromSettingsRow(settingsRow as Record<string, unknown> | null);
 
   // Saved state from DB
   const { data: savedItems } = await supabase
@@ -92,6 +99,9 @@ export async function ShoppingView({ nightId }: { nightId?: string }) {
     <ShoppingClient
       serviceNight={night}
       totalPizzas={totalPizzas}
+      glutenFreePizzas={glutenFreePizzas}
+      doughFormula={doughFormula ?? DEFAULT_DOUGH_FORMULA}
+      doughFormulaSaved={doughFormula !== null}
       ingredients={ingredients}
       initialCheckedKeys={Array.from(checkedKeys)}
       initialCustomItems={customItems}
