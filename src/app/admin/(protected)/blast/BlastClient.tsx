@@ -390,6 +390,18 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
                   )}
                 </div>
 
+                {audience === "past" && includeReferral && (
+                  <div style={{ marginTop: 18, background: "#484D52", borderRadius: 16, padding: "22px 24px", textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "#E8C24A", fontWeight: 700, fontFamily: "Arial, sans-serif" }}>Give a friend a free pizza</p>
+                    <p style={{ margin: "10px 0 0", fontSize: 30, fontWeight: 900, color: "#F8EAD5", letterSpacing: 2, fontFamily: "Arial, sans-serif" }}>AMOR-4817</p>
+                    <p style={{ margin: "10px 0 0", fontSize: 14, color: "#F8EAD5cc", lineHeight: 1.55, fontFamily: "Arial, sans-serif" }}>
+                      Share your code. On a friend&apos;s first order of two pizzas, the cheaper one is free.
+                      When they pick up, you get the same deal on your next order.
+                    </p>
+                    <p style={{ margin: "10px 0 0", fontSize: 11, color: "#F8EAD577", fontFamily: "Arial, sans-serif" }}>Example code. Each customer sees their own.</p>
+                  </div>
+                )}
+
                 <p style={{ textAlign: "center", fontSize: 11, color: "#F8EAD533", marginTop: 16, fontFamily: "Arial, sans-serif", lineHeight: 1.6 }}>
                   {audience === "current_orders"
                     ? "You're receiving this because you have an order tonight."
