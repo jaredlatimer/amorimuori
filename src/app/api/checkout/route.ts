@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/server";
+import { bogoDiscountCents, resolveReferralDiscount } from "@/lib/referrals";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn } =
+  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn, referralCode } =
     body as {
       serviceNightId: string;
       quantities: Record<string, number>;
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
       phone: string;
       email: string;
       smsOptIn?: boolean;
+      referralCode?: string | null;
     };
 
   if (!serviceNightId || !quantities || !pickupSlot || !name || !phone || !email) {
@@ -122,8 +124,38 @@ export async function POST(request: Request) {
     return { pizza, qty: q };
   });
 
+  // ── Referral BOGO: a friend's code, or the customer's own earned reward ────────
+  const pizzaCount = lineItems.reduce((sum, { qty }) => sum + qty, 0);
+  const referral = await resolveReferralDiscount(supabase, {
+    rawCode: referralCode,
+    email,
+    phone,
+    pizzaCount,
+  });
+  if (!referral.ok) {
+    return NextResponse.json({ error: referral.error, referralError: true }, { status: 400 });
+  }
+  const discount = referral.discount;
+  const discountCents =
+    discount.kind === "none"
+      ? 0
+      : bogoDiscountCents(lineItems.map(({ pizza, qty }) => ({ unitPriceCents: pizza.price_cents, qty })));
+  const discountLabel =
+    discount.kind === "friend"
+      ? `${discount.referrerName ? `${discount.referrerName}'s` : "Friend"} BOGO, cheaper pizza free`
+      : discount.kind === "reward"
+      ? "Your BOGO reward, cheaper pizza free"
+      : null;
+  const referralFields = {
+    referral_code: discount.kind === "friend" ? discount.code : null,
+    referral_kind: discount.kind === "none" ? null : discount.kind,
+    referral_reward_id: discount.kind === "reward" ? discount.rewardId : null,
+    discount_cents: discountCents,
+  };
+
+  // Tip is figured on the full pizza price, before the free pizza comes off
   const tipAmt = tipPct != null ? Math.round(subtotalCents * (tipPct / 100)) : 0;
-  const totalCents = subtotalCents + tipAmt;
+  const totalCents = subtotalCents - discountCents + tipAmt;
 
   if (totalCents <= 0) {
     return NextResponse.json({ error: "Invalid total" }, { status: 400 });
@@ -239,6 +271,7 @@ export async function POST(request: Request) {
         oven_start_time: ovenStartTime,
         oven_end_time: ovenEndTime,
         slot_locked_at: now,
+        ...referralFields,
       })
       .eq("id", existing.id);
 
@@ -268,6 +301,7 @@ export async function POST(request: Request) {
         oven_start_time: ovenStartTime,
         oven_end_time: ovenEndTime,
         slot_locked_at: now,
+        ...referralFields,
       })
       .select("id")
       .single();
@@ -338,5 +372,7 @@ export async function POST(request: Request) {
     orderId: order.id,
     code,
     totalCents,
+    discountCents,
+    discountLabel,
   });
 }

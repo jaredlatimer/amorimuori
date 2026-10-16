@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendOrderInOven, sendOrderReady } from "@/lib/sms";
+import { awardReferralForPickup } from "@/lib/referrals";
+import { sendReferralRewardEmail } from "@/lib/email";
 
 type OrderStatus =
   | "new"
@@ -63,6 +65,20 @@ export async function POST(request: Request) {
   if (updateErr) {
     console.error("Order status update error:", updateErr);
     return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+  }
+
+  // Referral BOGO: a friend who used a code just picked up, so the code's owner earns a reward
+  if (status === "picked_up") {
+    const reward = await awardReferralForPickup(service, orderId);
+    if (reward) {
+      sendReferralRewardEmail({
+        to: reward.referrerEmail,
+        name: reward.referrerName,
+        friendName: reward.friendName,
+        referralCode: reward.code,
+        expiresAt: reward.expiresAt,
+      }).catch((err) => console.error("Referral reward email error:", err));
+    }
   }
 
   // Fire SMS for key transitions only if customer opted in (fire-and-forget)

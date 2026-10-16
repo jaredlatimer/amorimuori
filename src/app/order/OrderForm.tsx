@@ -10,7 +10,14 @@ import type { PizzaAvailability } from "@/lib/availability";
 type CheckoutState =
   | { stage: "form" }
   | { stage: "loading" }
-  | { stage: "payment"; clientSecret: string; code: string; totalCents: number }
+  | {
+      stage: "payment";
+      clientSecret: string;
+      code: string;
+      totalCents: number;
+      discountCents: number;
+      discountLabel: string | null;
+    }
   | { stage: "error"; message: string };
 
 const TIP_OPTIONS: { label: string; value: number | null }[] = [
@@ -67,6 +74,7 @@ export function OrderForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [smsOptIn, setSmsOptIn] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
   const [checkout, setCheckout] = useState<CheckoutState>({ stage: "form" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -158,6 +166,7 @@ export function OrderForm({
           phone,
           email,
           smsOptIn,
+          referralCode: referralCode.trim() || null,
         }),
       });
       const data = await res.json();
@@ -183,6 +192,8 @@ export function OrderForm({
         clientSecret: data.clientSecret,
         code: data.code,
         totalCents: data.totalCents,
+        discountCents: data.discountCents ?? 0,
+        discountLabel: data.discountLabel ?? null,
       });
     } catch {
       setCheckout({ stage: "error", message: "Network error. Please try again." });
@@ -556,6 +567,20 @@ export function OrderForm({
                     </span>
                   </div>
                 ))}
+                {checkout.discountCents > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: "#256340",
+                    }}
+                  >
+                    <span>{checkout.discountLabel ?? "Discount"}</span>
+                    <span>−{fmt(checkout.discountCents)}</span>
+                  </div>
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -890,6 +915,39 @@ export function OrderForm({
                   onChange={(e) => setEmail(e.target.value)}
                   style={inputStyle}
                 />
+
+                {/* Referral BOGO */}
+                <label
+                  htmlFor="referral-code"
+                  style={{
+                    fontSize: 12,
+                    letterSpacing: 1.5,
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                    color: "#60403F",
+                    marginTop: 6,
+                  }}
+                >
+                  Friend&apos;s referral code (optional)
+                </label>
+                <input
+                  id="referral-code"
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  placeholder="e.g. AMOR-4817"
+                  value={referralCode}
+                  onChange={(e) => {
+                    setReferralCode(e.target.value.toUpperCase());
+                    if (checkout.stage === "error") setCheckout({ stage: "form" });
+                  }}
+                  style={{ ...inputStyle, letterSpacing: 1, fontWeight: 700 }}
+                />
+                <p style={{ fontSize: 12.5, color: "#484D5299", lineHeight: 1.45, margin: 0 }}>
+                  First order with us? A friend&apos;s code makes the cheaper of two pizzas free.
+                  Earned a free pizza? It&apos;s added on the next step automatically.
+                </p>
               </div>
 
               {checkout.stage === "error" && (
