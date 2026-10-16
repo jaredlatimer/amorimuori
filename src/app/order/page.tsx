@@ -3,6 +3,8 @@ import { getAvailability } from "@/lib/availability";
 import { LogoLockup } from "@/components/ui/Logo";
 import { OrderingClosed } from "@/components/OrderingClosed";
 import { OrderForm, type PizzaGroup } from "./OrderForm";
+import { normalizeReferralCode } from "@/lib/referrals";
+import { parseReferralVia } from "@/lib/referral-share";
 import type { Pizza, PizzaCategory } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +32,15 @@ async function getMenuGrouped(): Promise<PizzaGroup[]> {
   });
 }
 
-export default async function OrderPage() {
+export default async function OrderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ref?: string; via?: string }>;
+}) {
+  // A shared link (/order?ref=AMOR-4817&via=text) fills in the friend's code
+  const { ref, via } = await searchParams;
+  const refCode = typeof ref === "string" ? normalizeReferralCode(ref).slice(0, 40) : "";
+
   const [availability, groups] = await Promise.all([
     getAvailability(),
     getMenuGrouped(),
@@ -100,6 +110,8 @@ export default async function OrderPage() {
             availability={availability.pizzaAvailability}
             poolRemaining={availability.poolRemaining}
             nightlyTotal={availability.serviceNight!.nightly_total}
+            initialReferralCode={refCode}
+            referralVia={refCode ? parseReferralVia(via) : null}
           />
         )}
       </div>

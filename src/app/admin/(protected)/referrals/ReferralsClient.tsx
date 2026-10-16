@@ -12,6 +12,7 @@ import {
   type NightResult,
   type ScenarioKey,
 } from "@/lib/referral-results";
+import type { ReferralVia } from "@/lib/referral-share";
 
 export interface OwedReward {
   code: string;
@@ -21,8 +22,12 @@ export interface OwedReward {
   expiresAt: string;
 }
 
+// Guest orders per share channel, by night id. Null until migration 012 has run.
+export type ViaCounts = Record<string, Record<ReferralVia, number>>;
+
 interface Props {
   nights: NightResult[];
+  viaByNight: ViaCounts | null;
   selectedNightId: string | null;
   customersWithCodes: number;
   rewardsEarned: number;
@@ -190,6 +195,8 @@ export function ReferralsClient(props: Props) {
               </div>
             </section>
           </div>
+
+          {props.viaByNight && <GuestsByChannel nights={nights} viaByNight={props.viaByNight} guests={T.guests} />}
 
           <Rates
             all={all}
@@ -405,6 +412,31 @@ function niceStep(top: number) {
   return [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => s >= raw) ?? p * 10;
 }
 
+function GuestsByChannel({ nights, viaByNight, guests }: { nights: NightResult[]; viaByNight: ViaCounts; guests: number }) {
+  const c = { text: 0, email: 0, link: 0 };
+  for (const n of nights) {
+    const v = viaByNight[n.id];
+    if (v) for (const k of Object.keys(c) as ReferralVia[]) c[k] += v[k];
+  }
+  const typed = Math.max(0, guests - c.text - c.email - c.link);
+  const cells: [string, number][] = [["Text", c.text], ["Email", c.email], ["Copy link", c.link], ["Code typed in", typed]];
+
+  return (
+    <section className="rf-card">
+      <h2>Guests by channel</h2>
+      <div className="rf-via">
+        {cells.map(([label, n]) => (
+          <div key={label}><b>{n}</b><small>{label}</small></div>
+        ))}
+      </div>
+      <p className="rf-meta">
+        Which share button on the confirmation page brought each guest. Code typed in counts guests who entered the
+        code by hand, and guests from before share links were tracked.
+      </p>
+    </section>
+  );
+}
+
 function Rates(p: {
   all: ReturnType<typeof sumNights>; Wall: number; customers: number; earned: number; used: number;
   tuned: boolean; canTune: boolean; setTuned: (v: boolean) => void;
@@ -562,12 +594,17 @@ const CSS = `
 .rf-who { display: grid; min-width: 0; }
 .rf-who small { color: #F8EAD588; font-size: 12px; }
 .rf-exp { color: #F8EAD577; font-size: 12px; white-space: nowrap; }
+.rf-via { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.rf-via div { display: grid; gap: 2px; }
+.rf-via b { font-family: var(--font-fraunces), serif; font-weight: 900; font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.rf-via small { font-size: 12px; color: #F8EAD599; }
 .rf-foot { color: #F8EAD577; font-size: 12.5px; margin: 0; max-width: 760px; }
 @media (max-width: 600px) {
   .rf-scale { margin: 0 34px; }
   .rf-tk { font-size: 10px; }
   .rf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rf-kpi b { font-size: 24px; }
+  .rf-via { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { .rf-switch, .rf-switch::after { transition: none; } }
 `;
