@@ -49,6 +49,8 @@ export interface ConfirmationEmailData {
   totalCents: number;
   discountCents?: number;
   discountLabel?: string;
+  bundleDiscountCents?: number;
+  bundleLabel?: string;
   referralCode?: string;
   items: { pizza_name: string; quantity: number; unit_price_cents: number }[];
   introCopy?: string;
@@ -56,13 +58,21 @@ export interface ConfirmationEmailData {
 }
 
 export async function sendConfirmationEmail(data: ConfirmationEmailData) {
-  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, discountCents, discountLabel, referralCode, items, introCopy, subject } = data;
+  const { to, name, code, pickupAt, subtotalCents, tipCents, totalCents, discountCents, discountLabel, bundleDiscountCents, bundleLabel, referralCode, items, introCopy, subject } = data;
 
   const discountRow =
     discountCents && discountCents > 0
       ? `<tr>
           <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;font-family:Arial,sans-serif;">${discountLabel ?? "Discount"}</td>
           <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;text-align:right;font-family:Arial,sans-serif;">−${fmt(discountCents)}</td>
+        </tr>`
+      : "";
+
+  const bundleRow =
+    bundleDiscountCents && bundleDiscountCents > 0
+      ? `<tr>
+          <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;font-family:Arial,sans-serif;">${bundleLabel ?? "Bundle discount"}</td>
+          <td style="padding:4px 0;font-size:14px;color:#2F7D4F;font-weight:700;text-align:right;font-family:Arial,sans-serif;">−${fmt(bundleDiscountCents)}</td>
         </tr>`
       : "";
 
@@ -150,6 +160,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData) {
                   <td style="padding:4px 0;font-size:14px;color:#484D5299;text-align:right;font-family:Arial,sans-serif;">${fmt(subtotalCents)}</td>
                 </tr>
                 ${discountRow}
+                ${bundleRow}
                 ${tipRow}
                 <tr>
                   <td style="padding:10px 0 0;font-size:19px;font-weight:900;color:#484D52;border-top:1.5px solid #484D5215;">Total</td>
