@@ -7,6 +7,9 @@ import {
   shortEstimate,
   type InquiryStatus,
 } from "@/lib/event-packages";
+import { CONTRACT_REVIEW_NOTE } from "@/lib/event-contract";
+import type { AdminProposal } from "@/lib/event-proposals";
+import { PROPOSAL_CSS, ProposalPanel } from "./ProposalPanel";
 
 export interface InquiryRow {
   id: string;
@@ -43,14 +46,35 @@ function receivedAt(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
 }
 
-export function EventsClient({ rows: initial, migrated, loadFailed }: { rows: InquiryRow[]; migrated: boolean; loadFailed: boolean }) {
+export function EventsClient({
+  rows: initial,
+  migrated,
+  loadFailed,
+  proposals: initialProposals,
+  proposalsEnabled,
+}: {
+  rows: InquiryRow[];
+  migrated: boolean;
+  loadFailed: boolean;
+  proposals: AdminProposal[];
+  proposalsEnabled: boolean;
+}) {
   const [rows, setRows] = useState(initial);
+  const [proposals, setProposals] = useState(initialProposals);
   const [filter, setFilter] = useState<Filter>("all");
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const count = (s: InquiryStatus) => rows.filter((r) => r.status === s).length;
   const shown = filter === "all" ? rows : rows.filter((r) => r.status === filter);
+
+  // A proposal was created, edited or sent; sending also moves a New inquiry to Proposal sent
+  function proposalSaved(p: AdminProposal, inquiryStatus?: InquiryStatus) {
+    setProposals((ps) => (ps.some((x) => x.id === p.id) ? ps.map((x) => (x.id === p.id ? p : x)) : [...ps, p]));
+    if (inquiryStatus && p.inquiry_id) {
+      setRows((rs) => rs.map((r) => (r.id === p.inquiry_id ? { ...r, status: inquiryStatus } : r)));
+    }
+  }
 
   async function setStatus(row: InquiryRow, status: InquiryStatus) {
     if (row.status === status) return;
@@ -78,7 +102,7 @@ export function EventsClient({ rows: initial, migrated, loadFailed }: { rows: In
 
   return (
     <div style={{ paddingTop: 32, maxWidth: 960 }}>
-      <style>{CSS}</style>
+      <style>{CSS + PROPOSAL_CSS}</style>
       <h1 className="font-display" style={{ fontSize: 28, fontWeight: 900, margin: "0 0 6px" }}>Events</h1>
       <p style={{ fontSize: 14, color: "#F8EAD577", margin: "0 0 18px" }}>
         Requests from the Events page, newest first · {rows.length} total · {count("new")} new · {count("booked")} booked
@@ -90,6 +114,12 @@ export function EventsClient({ rows: initial, migrated, loadFailed }: { rows: In
           dietary notes. Until then these show as New and can&apos;t be changed.
         </p>
       )}
+      {!proposalsEnabled && migrated && (
+        <p className="ev-in-note">
+          Run <b>supabase/migrations/016_venues.sql</b> in the Supabase SQL editor to turn on proposals and contracts.
+        </p>
+      )}
+      <p className="ev-in-note ev-in-legal">{CONTRACT_REVIEW_NOTE}</p>
       {loadFailed && <p className="ev-in-note">Couldn&apos;t load inquiries. Check the server logs.</p>}
       {error && <p className="ev-in-note" role="alert">{error}</p>}
 
@@ -167,6 +197,13 @@ export function EventsClient({ rows: initial, migrated, loadFailed }: { rows: In
                   {r.notes}
                 </p>
               )}
+
+              <ProposalPanel
+                inquiry={r}
+                proposals={proposals.filter((p) => p.inquiry_id === r.id)}
+                enabled={proposalsEnabled && migrated}
+                onSaved={proposalSaved}
+              />
             </article>
           );
         })}
@@ -177,6 +214,7 @@ export function EventsClient({ rows: initial, migrated, loadFailed }: { rows: In
 
 const CSS = `
 .ev-in-note { background: #E8C24A22; border: 1px solid #E8C24A55; color: #F8EAD5; border-radius: 12px; padding: 10px 14px; font-size: 13.5px; margin: 0 0 14px; }
+.ev-in-legal { background: #60403F55; border-color: #C9A22766; }
 .ev-in-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
 .ev-in-filters button, .ev-in-status button { font: 700 13px var(--font-archivo), sans-serif; padding: 6px 12px; border-radius: 100px; border: 1px solid #F8EAD520; background: transparent; color: #F8EAD5aa; cursor: pointer; }
 .ev-in-filters button.on { background: #F8EAD5; color: #484D52; border-color: transparent; }

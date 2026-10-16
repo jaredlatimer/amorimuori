@@ -132,3 +132,122 @@ export const INQUIRY_STATUSES: { id: InquiryStatus; label: string }[] = [
   { id: "booked", label: "Booked" },
   { id: "lost", label: "Lost" },
 ];
+
+// ── Proposals ────────────────────────────────────────────────
+// A proposal is the estimate above plus gluten free pizzas, any custom
+// lines the owner adds, and a deposit percent. Worked out in cents so a
+// custom line like $37.50 adds up exactly.
+
+/** Default deposit on a new proposal, as a whole percent. */
+export const DEFAULT_DEPOSIT_PCT = Math.round(DEPOSIT_SHARE * 100);
+
+export const MAX_CUSTOM_LINES = 10;
+
+/** An extra line on a proposal. A negative amount is a discount. */
+export interface CustomLine {
+  label: string;
+  amount_cents: number;
+}
+
+export interface ProposalMath {
+  guests: number;
+  perGuestCents: number;
+  rawCents: number; // guests × per-guest price
+  packageCents: number; // raw, or the minimum if that is higher
+  minimumCents: number;
+  underMinimum: boolean;
+  glutenFree: number;
+  glutenFreeCents: number; // glutenFree × $3
+  customLines: CustomLine[];
+  totalCents: number;
+  depositPct: number;
+  depositCents: number;
+  balanceCents: number; // what is left to pay on the event day
+}
+
+export function proposalMath(
+  pkg: EventPackage,
+  input: { guests: number; glutenFree: number; customLines: CustomLine[]; depositPct: number }
+): ProposalMath {
+  const perGuestCents = pkg.perGuest * 100;
+  const minimumCents = pkg.minimum * 100;
+  const rawCents = input.guests * perGuestCents;
+  const underMinimum = rawCents < minimumCents;
+  const packageCents = underMinimum ? minimumCents : rawCents;
+  const glutenFreeCents = input.glutenFree * GLUTEN_FREE_EXTRA * 100;
+  const customCents = input.customLines.reduce((sum, l) => sum + l.amount_cents, 0);
+  const totalCents = packageCents + glutenFreeCents + customCents;
+  const depositCents = Math.round((totalCents * input.depositPct) / 100);
+  return {
+    guests: input.guests,
+    perGuestCents,
+    rawCents,
+    packageCents,
+    minimumCents,
+    underMinimum,
+    glutenFree: input.glutenFree,
+    glutenFreeCents,
+    customLines: input.customLines,
+    totalCents,
+    depositPct: input.depositPct,
+    depositCents,
+    balanceCents: totalCents - depositCents,
+  };
+}
+
+/** "$1,412" for whole dollars, "$706.50" when there are cents. */
+export function moneyCents(cents: number): string {
+  const sign = cents < 0 ? "−" : "";
+  const abs = Math.abs(cents);
+  const opts = abs % 100 === 0 ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return `${sign}$${(abs / 100).toLocaleString("en-US", opts)}`;
+}
+
+function customStep(l: CustomLine): string {
+  return l.amount_cents < 0 ? `− ${l.label}: ${moneyCents(-l.amount_cents)}` : `+ ${l.label}: ${moneyCents(l.amount_cents)}`;
+}
+
+/**
+ * The proposal math, one step per line, e.g.
+ *   "50 guests × $28 = $1,400"
+ *   "+ 4 gluten free × $3 = $12"
+ *   "→ Total: $1,412"
+ *   "Deposit (50% of $1,412): $706"
+ *   "Balance due on the day ($1,412 − $706): $706"
+ */
+export function explainProposalSteps(m: ProposalMath): string[] {
+  const product = `${m.guests} guests × ${moneyCents(m.perGuestCents)} = ${moneyCents(m.rawCents)}`;
+  const steps = [
+    m.underMinimum
+      ? `${product}, which is under the ${moneyCents(m.minimumCents)} minimum, so the package is ${moneyCents(m.packageCents)}`
+      : product,
+  ];
+  if (m.glutenFree > 0) {
+    steps.push(`+ ${m.glutenFree} gluten free × ${moneyCents(GLUTEN_FREE_EXTRA * 100)} = ${moneyCents(m.glutenFreeCents)}`);
+  }
+  for (const l of m.customLines) steps.push(customStep(l));
+  steps.push(`→ Total: ${moneyCents(m.totalCents)}`);
+  steps.push(`Deposit (${m.depositPct}% of ${moneyCents(m.totalCents)}): ${moneyCents(m.depositCents)}`);
+  steps.push(`Balance due on the day (${moneyCents(m.totalCents)} − ${moneyCents(m.depositCents)}): ${moneyCents(m.balanceCents)}`);
+  return steps;
+}
+
+/**
+ * The same math as one sentence, e.g.
+ * "50 guests × $28 = $1,400 + 4 gluten free × $3 = $12 → $1,412. Deposit (50%): $706. Balance due on the day: $706."
+ */
+export function explainProposal(m: ProposalMath): string {
+  const product = `${m.guests} guests × ${moneyCents(m.perGuestCents)} = ${moneyCents(m.rawCents)}`;
+  const parts = [
+    m.underMinimum ? `${product}, under the ${moneyCents(m.minimumCents)} minimum, so ${moneyCents(m.packageCents)}` : product,
+  ];
+  if (m.glutenFree > 0) {
+    parts.push(`+ ${m.glutenFree} gluten free × ${moneyCents(GLUTEN_FREE_EXTRA * 100)} = ${moneyCents(m.glutenFreeCents)}`);
+  }
+  for (const l of m.customLines) parts.push(customStep(l));
+  return (
+    `${parts.join(" ")} → ${moneyCents(m.totalCents)}. ` +
+    `Deposit (${m.depositPct}%): ${moneyCents(m.depositCents)}. ` +
+    `Balance due on the day: ${moneyCents(m.balanceCents)}.`
+  );
+}

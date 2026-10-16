@@ -5,6 +5,7 @@ import { sendConfirmationEmail, sendAdminOrderNotification } from "@/lib/email";
 import { getCustomerHistory } from "@/lib/customer-history";
 import { generateConfirmationCopy, SUBJECT_LINES } from "@/lib/confirmation-copy";
 import { getOrCreateReferralCode, redeemReferralReward } from "@/lib/referrals";
+import { handleEventDeposit, isEventDepositEvent } from "@/lib/event-deposit";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -23,6 +24,16 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("Webhook signature verification failed:", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
+
+  // Event deposits (metadata.kind = "event_deposit") are handled on their own
+  // and return here, so the pizza order logic below never sees them.
+  if (isEventDepositEvent(event)) {
+    const ok = await handleEventDeposit(event);
+    // 500 makes Stripe retry
+    return ok
+      ? NextResponse.json({ received: true })
+      : NextResponse.json({ error: "DB update failed" }, { status: 500 });
   }
 
   if (event.type === "payment_intent.succeeded") {

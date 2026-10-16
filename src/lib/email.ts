@@ -455,6 +455,45 @@ export async function sendCateringInquiryNotification(data: CateringInquiryData)
   });
 }
 
+export interface EventProposalEmailData {
+  to: string;
+  name: string;
+  proposalUrl: string;
+  eventDate: string; // already formatted, e.g. "Saturday, June 6, 2026"
+  packageName: string;
+  guests: number;
+  mathSteps: string[]; // from explainProposalSteps
+  depositLabel: string; // e.g. "$706"
+}
+
+// Only ever sent when the owner presses "Email to client" in the Events inbox
+export async function sendEventProposalEmail(data: EventProposalEmailData) {
+  const { to, name, proposalUrl, eventDate, packageName, guests, mathSteps, depositLabel } = data;
+  const steps = mathSteps
+    .map((s) => `<li style="margin:0 0 4px;">${escapeHtml(s)}</li>`)
+    .join("");
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    replyTo: process.env.ADMIN_EMAIL || undefined,
+    subject: `Your Amori Muori event proposal — ${eventDate}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#484D52;">
+        <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#484D5299;">Amori Muori</p>
+        <h2 style="color:#2F7D4F;margin:8px 0 16px;">Hi ${escapeHtml(name)}!</h2>
+        <p style="font-size:15px;line-height:1.6;">Thanks for thinking of us for your event on <strong>${escapeHtml(eventDate)}</strong>. Here's your proposal for ${guests} guests on the ${escapeHtml(packageName)} package:</p>
+        <ul style="font-size:14px;line-height:1.5;padding-left:18px;margin:12px 0 18px;">${steps}</ul>
+        <p style="font-size:15px;line-height:1.6;">To book, open the proposal, read the agreement, sign with your name, then pay the ${escapeHtml(depositLabel)} deposit to hold your date.</p>
+        <a href="${proposalUrl}" style="display:inline-block;background:#2F7D4F;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;margin:12px 0;">
+          View and sign your proposal →
+        </a>
+        <p style="color:#888;font-size:13px;line-height:1.5;">This link is just for you, so please don't share it. Questions? Reply to this email.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendAdminOrderNotification(data: AdminOrderNotificationData) {
   const adminEmail = process.env.ADMIN_EMAIL;
   if (!adminEmail) return;

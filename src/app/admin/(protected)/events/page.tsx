@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import type { InquiryStatus } from "@/lib/event-packages";
+import { PROPOSAL_ADMIN_COLUMNS, isMissingTable, type AdminProposal } from "@/lib/event-proposals";
 import { EventsClient, type InquiryRow } from "./EventsClient";
 
 export const dynamic = "force-dynamic";
@@ -9,12 +10,16 @@ export const dynamic = "force-dynamic";
 export default async function EventsInboxPage() {
   const supabase = await createServiceClient();
   // select("*") so the page still loads before 011_events.sql adds the new columns
-  const { data, error } = await supabase
-    .from("catering_inquiries")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const [{ data, error }, { data: proposalData, error: proposalError }] = await Promise.all([
+    supabase.from("catering_inquiries").select("*").order("created_at", { ascending: false }),
+    supabase.from("event_proposals").select(PROPOSAL_ADMIN_COLUMNS).order("created_at", { ascending: true }),
+  ]);
 
   if (error) console.error("Events inbox load error:", error);
+  // Until 016_venues.sql runs there is no event_proposals table; the inbox still works
+  const proposalsEnabled = !proposalError;
+  if (proposalError && !isMissingTable(proposalError)) console.error("Event proposals load error:", proposalError);
+  const proposals = (proposalData ?? []) as unknown as AdminProposal[];
 
   const raw = (data ?? []) as Record<string, unknown>[];
   const migrated = raw.length === 0 || "status" in raw[0];
@@ -37,5 +42,13 @@ export default async function EventsInboxPage() {
     status_updated_at: str(r.status_updated_at),
   }));
 
-  return <EventsClient rows={rows} migrated={migrated} loadFailed={!!error} />;
+  return (
+    <EventsClient
+      rows={rows}
+      migrated={migrated}
+      loadFailed={!!error}
+      proposals={proposals}
+      proposalsEnabled={proposalsEnabled}
+    />
+  );
 }
