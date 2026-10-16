@@ -186,10 +186,6 @@ export function EventPlanner() {
                   {p.priceNote ? ` (${p.priceNote.toLowerCase()})` : ""}
                 </span>
                 <b>{money(est.total)}</b>
-                <small>
-                  {guests} × {money(p.perGuest)} = {money(est.raw)}
-                  {est.underMinimum ? `, under the ${money(p.minimum)} minimum` : ""}
-                </small>
               </button>
             );
           })}
