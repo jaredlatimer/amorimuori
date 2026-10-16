@@ -67,8 +67,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
   }
 
-  // Referral BOGO: a friend who used a code just picked up, so the code's owner earns a reward
-  if (status === "picked_up") {
+  // Referral BOGO: a friend who used a code is ready (or picked up), so the code's owner
+  // earns a reward. The Kitchen screen stops at Ready, so award there; the unique
+  // earned_from_order_id means a later Picked up never awards twice.
+  if (status === "ready" || status === "picked_up") {
     const reward = await awardReferralForPickup(service, orderId);
     if (reward) {
       sendReferralRewardEmail({

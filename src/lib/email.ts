@@ -258,7 +258,7 @@ export async function sendReferralRewardEmail(data: ReferralRewardEmailData) {
               <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E8C24A;font-family:Arial,sans-serif;">Reward unlocked</p>
               <h1 style="margin:10px 0 0;font-size:34px;font-weight:900;color:#F8EAD5;line-height:1.1;">Your next pizza is on us, ${firstName}.</h1>
               <p style="margin:14px 0 0;font-size:16px;color:#F8EAD5cc;font-family:Arial,sans-serif;line-height:1.6;">
-                ${friend} just picked up their first Amori Muori order with your code. Thank you for sharing!
+                ${friend} just had their first Amori Muori order with your code. Thank you for sharing!
               </p>
             </td>
           </tr>
@@ -285,7 +285,7 @@ export async function sendReferralRewardEmail(data: ReferralRewardEmailData) {
   await resend.emails.send({
     from: FROM,
     to,
-    subject: `${friend} picked up. Your next pizza is on us!`,
+    subject: `${friend} used your code. Your next pizza is on us!`,
     html,
   });
 }
