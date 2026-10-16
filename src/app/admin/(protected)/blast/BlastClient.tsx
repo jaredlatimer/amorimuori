@@ -75,6 +75,7 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
   const [isTest, setIsTest] = useState(false);
   const [includeReferral, setIncludeReferral] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [showFormatHelp, setShowFormatHelp] = useState(false);
 
   // Wrap the selected text (or a placeholder) in markers, keeping the selection on the inner text.
   function wrapSelection(before: string, after: string, placeholder: string) {
@@ -323,10 +324,22 @@ export function BlastClient({ pastRecipients, currentNight }: Props) {
               <button type="button" title="Bold (⌘B)" onClick={() => wrapSelection("**", "**", "bold text")} style={{ ...toolButtonStyle, fontWeight: 900 }}>B</button>
               <button type="button" title="Italic (⌘I)" onClick={() => wrapSelection("*", "*", "italic text")} style={{ ...toolButtonStyle, fontStyle: "italic", fontFamily: "Georgia, serif" }}>I</button>
               <button type="button" title="Link (⌘K)" onClick={insertLink} style={toolButtonStyle}>Link</button>
-              <span style={{ fontSize: 12, color: "#F8EAD544", marginLeft: 4 }}>
-                **bold** · *italic* · [text](url)
-              </span>
+              <button
+                type="button"
+                aria-label="Formatting help"
+                aria-expanded={showFormatHelp}
+                title="Formatting help"
+                onClick={() => setShowFormatHelp((v) => !v)}
+                style={{ ...toolButtonStyle, minWidth: 30, borderRadius: 100, marginLeft: "auto", color: showFormatHelp ? "#F8EAD5" : "#F8EAD577" }}
+              >
+                ?
+              </button>
             </div>
+            {showFormatHelp && (
+              <p style={{ fontSize: 12, color: "#F8EAD588", margin: "0 0 8px", lineHeight: 1.5 }}>
+                You can also type it: **bold**, *italic*, [link text](amorimuori.com/order).
+              </p>
+            )}
             <textarea
               ref={bodyRef}
               onKeyDown={onBodyKeyDown}
