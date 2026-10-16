@@ -6,6 +6,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { CheckoutFormInner } from "@/components/CheckoutForm";
 import type { Pizza } from "@/lib/types";
 import type { PizzaAvailability } from "@/lib/availability";
+import type { ReferralVia } from "@/lib/referral-share";
 
 type CheckoutState =
   | { stage: "form" }
@@ -52,6 +53,8 @@ interface OrderFormProps {
   availability: Record<string, PizzaAvailability>;
   poolRemaining: number;
   nightlyTotal: number;
+  initialReferralCode?: string;
+  referralVia?: ReferralVia | null;
 }
 
 export function OrderForm({
@@ -61,6 +64,8 @@ export function OrderForm({
   availability,
   poolRemaining,
   nightlyTotal,
+  initialReferralCode = "",
+  referralVia = null,
 }: OrderFormProps) {
   const isTonight =
     serviceDate ===
@@ -74,7 +79,7 @@ export function OrderForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [smsOptIn, setSmsOptIn] = useState(false);
-  const [referralCode, setReferralCode] = useState("");
+  const [referralCode, setReferralCode] = useState(initialReferralCode);
   const [checkout, setCheckout] = useState<CheckoutState>({ stage: "form" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -167,6 +172,8 @@ export function OrderForm({
           email,
           smsOptIn,
           referralCode: referralCode.trim() || null,
+          // Credit the share button only if the guest kept the code from the link
+          referralVia: referralVia && referralCode.trim() === initialReferralCode ? referralVia : null,
         }),
       });
       const data = await res.json();

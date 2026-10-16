@@ -8,7 +8,8 @@ import {
   type NightRow,
   type OrderRow,
 } from "@/lib/referral-results";
-import { ReferralsClient, type OwedReward } from "./ReferralsClient";
+import type { ReferralVia } from "@/lib/referral-share";
+import { ReferralsClient, type OwedReward, type ViaCounts } from "./ReferralsClient";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,25 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
     supabase.from("referral_codes").select("code, email, name"),
   ]);
 
+  // Guests by share channel. A separate query so the page still loads before
+  // migration 012 adds orders.referral_via; until then the count is hidden.
+  const { data: viaRows, error: viaError } = await supabase
+    .from("orders")
+    .select("service_night_id, referral_via")
+    .in("status", PAID_STATUSES)
+    .eq("referral_kind", "friend")
+    .not("referral_via", "is", null)
+    .limit(10000);
+  let viaByNight: ViaCounts | null = null;
+  if (!viaError) {
+    viaByNight = {};
+    for (const r of (viaRows ?? []) as { service_night_id: string | null; referral_via: ReferralVia }[]) {
+      if (!r.service_night_id) continue;
+      const c = (viaByNight[r.service_night_id] ??= { text: 0, email: 0, link: 0 });
+      c[r.referral_via] += 1;
+    }
+  }
+
   const allNights = (nights ?? []) as NightRow[];
   const orderRows: OrderRow[] = ((orders ?? []) as RawOrder[]).map((o) => ({
     id: o.id,
@@ -90,6 +110,7 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
       rewardsUsed={allRewards.filter((r) => r.redeemed_at).length}
       rewardsExpired={allRewards.filter((r) => !r.redeemed_at && new Date(r.expires_at).getTime() <= now).length}
       owed={owed}
+      viaByNight={viaByNight}
       scenarioPerFriday={scenarioPerFriday}
     />
   );

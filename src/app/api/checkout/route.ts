@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/server";
 import { bogoDiscountCents, resolveReferralDiscount } from "@/lib/referrals";
+import { parseReferralVia } from "@/lib/referral-share";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn, referralCode } =
+  const { serviceNightId, quantities, pickupSlot, tipPct, name, phone, email, smsOptIn, referralCode, referralVia } =
     body as {
       serviceNightId: string;
       quantities: Record<string, number>;
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
       email: string;
       smsOptIn?: boolean;
       referralCode?: string | null;
+      referralVia?: string | null;
     };
 
   if (!serviceNightId || !quantities || !pickupSlot || !name || !phone || !email) {
@@ -312,6 +314,13 @@ export async function POST(request: Request) {
     }
 
     order = insertedOrder;
+  }
+
+  // Which share button brought this guest. Separate and best-effort, so checkout
+  // still works before migration 012 adds the column.
+  const via = discount.kind === "friend" ? parseReferralVia(referralVia) : null;
+  if (via || isReused) {
+    await supabase.from("orders").update({ referral_via: via }).eq("id", order.id);
   }
 
   // ── Insert order items ────────────────────────────────────────────────────────
