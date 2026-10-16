@@ -36,29 +36,36 @@ function pad(n: number) {
 
 const ET = "America/New_York";
 
-function fmtDay(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { weekday: "long", timeZone: ET });
+// "Wednesday, October 22 at 10:00 AM"
+function fmtDayTime(iso: string) {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: ET });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: ET });
+  return `${day} at ${time}`;
 }
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: ET });
+// service_date is a plain "2026-10-24"; anchor at noon so no timezone shifts the day
+function fmtServiceDate(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 interface OrderingClosedProps {
   nextOpenAt: string | null;
   orderCloseAt?: string | null;
+  serviceDate?: string | null;
 }
 
-export function OrderingClosed({ nextOpenAt, orderCloseAt }: OrderingClosedProps) {
+export function OrderingClosed({ nextOpenAt, orderCloseAt, serviceDate }: OrderingClosedProps) {
   const countdown = useCountdown(nextOpenAt ?? "");
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">(
     "idle"
   );
 
-  const openDay  = nextOpenAt  ? fmtDay(nextOpenAt)   : "Wednesday";
-  const openTime = nextOpenAt  ? fmtTime(nextOpenAt)  : null;
-  const closeDay  = orderCloseAt ? fmtDay(orderCloseAt)  : "Friday";
-  const closeTime = orderCloseAt ? fmtTime(orderCloseAt) : null;
+  const nightLabel = serviceDate ? fmtServiceDate(serviceDate) : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -128,7 +135,7 @@ export function OrderingClosed({ nextOpenAt, orderCloseAt }: OrderingClosedProps
           animationDelay: ".05s",
         }}
       >
-        We open {openDay}.
+        {nightLabel ? <>Next pizza night: {nightLabel}.</> : "Our next pizza night isn\u2019t set yet."}
       </h2>
 
       <p
@@ -141,14 +148,21 @@ export function OrderingClosed({ nextOpenAt, orderCloseAt }: OrderingClosedProps
           animationDelay: ".1s",
         }}
       >
-        Friday Night Take orders open every{" "}
-        <strong style={{ color: "#F8EAD5" }}>
-          {openDay}{openTime ? ` at ${openTime}` : ""}
-        </strong>{" "}
-        and close{" "}
-        <strong style={{ color: "#F8EAD5" }}>
-          {closeDay}{closeTime ? ` at ${closeTime}` : ""}
-        </strong>. Check back then to reserve your pickup window.
+        {nightLabel && nextOpenAt && orderCloseAt ? (
+          <>
+            Orders for that night open{" "}
+            <strong style={{ color: "#F8EAD5" }}>{fmtDayTime(nextOpenAt)}</strong>{" "}
+            and close{" "}
+            <strong style={{ color: "#F8EAD5" }}>{fmtDayTime(orderCloseAt)}</strong>.{" "}
+          </>
+        ) : (
+          <>Ordering opens the Wednesday before each pizza night. </>
+        )}
+        We don&apos;t bake every Friday, so see{" "}
+        <a href="/calendar" style={{ color: "#F8EAD5", textDecoration: "underline" }}>
+          upcoming dates
+        </a>{" "}
+        on our calendar.
       </p>
 
       {/* Countdown card */}
@@ -264,7 +278,7 @@ export function OrderingClosed({ nextOpenAt, orderCloseAt }: OrderingClosedProps
             <div
               style={{ fontSize: 14, color: "#F8EAD5aa", marginTop: 4 }}
             >
-              We&apos;ll email you Wednesday when ordering opens.
+              We&apos;ll email you when ordering opens for our next pizza night.
             </div>
           </div>
         ) : (
@@ -279,8 +293,8 @@ export function OrderingClosed({ nextOpenAt, orderCloseAt }: OrderingClosedProps
                 marginBottom: 14,
               }}
             >
-              Drop your email and we&apos;ll remind you the moment ordering
-              opens Wednesday.
+              Drop your email and we&apos;ll let you know when ordering opens
+              for our next pizza night.
             </div>
             <form
               onSubmit={handleSubmit}

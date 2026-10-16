@@ -153,6 +153,7 @@ export default async function OrderPage({
           <OrderingClosed
             nextOpenAt={availability.nextOpenAt}
             orderCloseAt={availability.serviceNight?.order_close_at ?? null}
+            serviceDate={availability.serviceNight?.service_date ?? null}
           />
         ) : (
           <OrderForm
