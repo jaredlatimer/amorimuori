@@ -81,8 +81,9 @@ export async function POST(request: Request) {
     }
   }
 
-  // Fire SMS for key transitions only if customer opted in (fire-and-forget)
-  if (typedOrder.sms_opt_in) {
+  // Fire SMS for key transitions only if customer opted in (fire-and-forget).
+  // Skip when the status didn't actually change, so a double tap doesn't text twice.
+  if (typedOrder.sms_opt_in && typedOrder.status !== status) {
     if (status === "making") {
       const etaMinutes = Math.max(
         1,

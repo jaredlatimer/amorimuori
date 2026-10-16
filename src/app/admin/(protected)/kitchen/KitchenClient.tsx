@@ -58,6 +58,7 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
   const [glowingIds, setGlowingIds] = useState<Set<string>>(new Set());
   const [pizzaStates, setPizzaStates] = useState<Map<string, PizzaState>>(new Map());
   const [now, setNow] = useState(() => Date.now());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const prevIdsRef = useRef<Set<string>>(new Set(initialOrders.map((o) => o.id)));
   const supabase = createClient();
 
@@ -118,9 +119,28 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
     setUpdating(false);
     if (next === "ready") {
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
+      setSelectedId((id) => (id === order.id ? null : id));
     } else {
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "making" } : o)));
     }
+  }
+
+  // Undo a mistaken start: the order goes back to the queue and its pizza stages reset
+  async function backToQueue(order: Order) {
+    setUpdating(true);
+    await fetch("/api/admin/update-order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, status: "new" }),
+    });
+    setUpdating(false);
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "new" } : o)));
+    setPizzaStates((prev) => {
+      const next = new Map(prev);
+      for (const key of prev.keys()) if (key.startsWith(`${order.id}::`)) next.delete(key);
+      return next;
+    });
+    setSelectedId(null);
   }
 
   async function setPizzaStageAndAdvance(order: Order, key: string, stage: PizzaState) {
@@ -138,8 +158,19 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
   }
 
   const totalPizzas = items.reduce((s, i) => s + i.quantity, 0);
-  const current = orders[0] ?? null;
-  const upNext = orders.slice(1);
+  // Any ticket can be opened. Without a pick, keep working what's in progress,
+  // then the order whose start-cook time comes first.
+  const inProgress = orders.filter((o) => o.status === "making");
+  const waiting = orders
+    .filter((o) => o.status === "new")
+    .sort((a, b) => startCookInfo(a, items, bakeMinutes, now).startCookMs - startCookInfo(b, items, bakeMinutes, now).startCookMs);
+  const suggestedId = waiting[0]?.id ?? null;
+  const current = orders.find((o) => o.id === selectedId) ?? inProgress[0] ?? waiting[0] ?? null;
+  const queueGroups = [
+    { label: "In progress", list: inProgress.filter((o) => o.id !== current?.id) },
+    { label: "Up next · tap any", list: waiting.filter((o) => o.id !== current?.id) },
+  ];
+  const upNext = queueGroups.flatMap((g) => g.list);
 
   return (
     <div style={{ margin: "0 -24px" }}>
@@ -147,7 +178,7 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
         .kitchen-body {
           display: flex;
           flex-direction: row;
-          height: calc(100vh - 56px - 57px);
+          height: calc(100vh - 57px);
           background: #22252a;
           overflow: hidden;
         }
@@ -236,12 +267,22 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
             min-width: 160px;
           }
         }
+        @media (max-width: 640px) {
+          .kitchen-ready-row { flex-direction: column-reverse; }
+          .kitchen-back-btn { padding: 10px 18px !important; }
+          .kitchen-ready-btn { padding: 14px !important; font-size: 17px !important; }
+        }
+        @media (max-width: 760px) {
+          .kitchen-body {
+            height: calc(100dvh - 57px - 52px - 90px - env(safe-area-inset-bottom, 0px));
+          }
+        }
       `}</style>
 
       {/* Header */}
       <div style={{ background: "#3A3E43", padding: "14px 26px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #F8EAD510" }}>
         <div className="font-display" style={{ fontWeight: 900, fontSize: 19, color: "#F8EAD5", letterSpacing: 0.5 }}>
-          KITCHEN
+          OVEN
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {process.env.NODE_ENV === "development" && (
@@ -393,11 +434,21 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
                 return (
                   <div style={{ padding: "18px 26px", borderTop: "2px dashed #ddd", flexShrink: 0 }}>
                     {current.status === "making" ? (
+                      <div className="kitchen-ready-row" style={{ display: "flex", gap: 10 }}>
                       <button
+                        className="kitchen-back-btn"
+                        onClick={() => backToQueue(current)}
+                        disabled={updating}
+                        style={{ border: "2px solid #ddd", background: "transparent", color: "#484D52", borderRadius: 14, padding: "0 18px", fontSize: 15, fontWeight: 700, cursor: updating ? "wait" : "pointer", fontFamily: "var(--font-archivo), sans-serif", whiteSpace: "nowrap" }}
+                      >
+                        Back to queue
+                      </button>
+                      <button
+                        className="kitchen-ready-btn"
                         onClick={() => advance(current)}
                         disabled={updating || !allBoxed}
                         style={{
-                          width: "100%", border: "none",
+                          flex: 1, border: "none",
                           cursor: updating || !allBoxed ? "not-allowed" : "pointer",
                           fontFamily: "var(--font-archivo), sans-serif", fontWeight: 900, color: "#fff",
                           background: updating || !allBoxed ? "#aaa" : "#3D7BC9",
@@ -406,6 +457,7 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
                       >
                         {updating ? "…" : allBoxed ? "MARK READY ✓" : "BOX ALL PIZZAS FIRST"}
                       </button>
+                      </div>
                     ) : (
                       <div style={{ textAlign: "center", fontSize: 14, color: "#aaa", padding: "6px 0" }}>
                         Tap <strong>Al Banco</strong> on each pizza to start this order
@@ -421,37 +473,49 @@ export function KitchenClient({ serviceNightId, bakeMinutes, initialOrders, init
 
         {/* Queue panel */}
         <div className="kitchen-queue-panel">
-          <div className="kitchen-queue-label" style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "#F8EAD577", fontWeight: 700, marginBottom: 14, paddingLeft: 4 }}>
-            Up next · {upNext.length}
-          </div>
           <div className="kitchen-queue-inner">
             {upNext.length === 0 && (
               <div style={{ color: "#F8EAD544", fontSize: 14, paddingLeft: 4 }}>Nothing waiting.</div>
             )}
-            {upNext.map((o, idx) => {
-              const queueStartCook = startCookInfo(o, items, bakeMinutes, now);
-              return (
-              <div key={o.id} className={`kitchen-queue-card${glowingIds.has(o.id) ? " order-new-glow" : ""}${queueStartCook.overdue ? " queue-card-alert" : ""}`}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, color: "#F8EAD599", fontWeight: 600 }}>#{idx + 2}</span>
-                  <span className="font-display" style={{ fontWeight: 900, fontSize: 16, color: "#F8EAD5" }}>
-                    {formatTime(o.pickup_at)}
-                  </span>
+            {queueGroups.filter((g) => g.list.length > 0).map((group) => (
+              <div key={group.label} style={{ display: "contents" }}>
+                <div className="kitchen-queue-label" style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "#F8EAD577", fontWeight: 700, paddingLeft: 4 }}>
+                  {group.label}
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4, color: queueStartCook.overdue ? "#eb5757" : "#F8EAD599" }}>
-                  Start Cook: {queueStartCook.overdue ? "Now" : formatTime(new Date(queueStartCook.startCookMs).toISOString())}
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#F8EAD5", marginBottom: 4 }}>
-                  {o.customer_name}
-                </div>
-                {items.filter((i) => i.order_id === o.id).map((item) => (
-                  <div key={item.pizza_name} style={{ fontSize: 14, color: "#F8EAD5", lineHeight: 1.5 }}>
-                    <strong>{item.quantity}×</strong> {item.pizza_name}
-                  </div>
-                ))}
+                {group.list.map((o) => {
+                  const queueStartCook = startCookInfo(o, items, bakeMinutes, now);
+                  const suggested = o.id === suggestedId;
+                  return (
+                  <button
+                    key={o.id}
+                    onClick={() => setSelectedId(o.id)}
+                    className={`kitchen-queue-card${glowingIds.has(o.id) ? " order-new-glow" : ""}${queueStartCook.overdue && o.status === "new" ? " queue-card-alert" : ""}`}
+                    style={{ textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit", outline: suggested ? "2px solid #C9A227" : undefined, outlineOffset: 0 }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#F8EAD5" }}>
+                        {o.customer_name}
+                      </span>
+                      <span className="font-display" style={{ fontWeight: 900, fontSize: 16, color: "#F8EAD5" }}>
+                        {formatTime(o.pickup_at)}
+                      </span>
+                    </div>
+                    {o.status === "new" && (
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4, color: queueStartCook.overdue ? "#eb5757" : suggested ? "#E8C24A" : "#F8EAD599" }}>
+                        {queueStartCook.overdue ? "Start now" : `Start by ${formatTime(new Date(queueStartCook.startCookMs).toISOString())}`}
+                        {suggested && " · next"}
+                      </div>
+                    )}
+                    {items.filter((i) => i.order_id === o.id).map((item) => (
+                      <div key={item.pizza_name} style={{ fontSize: 14, color: "#F8EAD5", lineHeight: 1.5 }}>
+                        <strong>{item.quantity}×</strong> {item.pizza_name}
+                      </div>
+                    ))}
+                  </button>
+                  );
+                })}
               </div>
-              );
-            })}
+            ))}
           </div>
         </div>
 

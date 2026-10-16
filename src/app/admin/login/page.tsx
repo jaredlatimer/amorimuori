@@ -8,7 +8,7 @@ export default async function LoginPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user) redirect("/admin/orders");
+  if (user) redirect("/admin/service");
 
   return (
     <div
