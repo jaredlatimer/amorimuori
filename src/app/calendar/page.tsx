@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { getAvailability, type AvailabilityData } from "@/lib/availability";
+import { getAvailability } from "@/lib/availability";
 import { todayET } from "@/lib/service-nights";
-import { dateParts, formatOpensAt, formatPickupWindow, formatShortDay, type CalendarNight } from "@/lib/calendar";
+import { dateParts, formatOpensAt, formatPickupWindow } from "@/lib/calendar";
+import { getUpcomingNights, isSoldOut, nightPill } from "@/lib/night-status";
 import { SiteShell } from "@/components/ui/SiteShell";
+import { StatusPill as Pill } from "@/components/ui/StatusPill";
 import { RemindForm } from "./RemindForm";
 
 export const dynamic = "force-dynamic";
@@ -13,61 +14,6 @@ export const metadata: Metadata = {
   description: "Upcoming Friday Night Take dates in Ashburn Farm, VA. See when ordering opens and add pickup nights to your calendar.",
   alternates: { canonical: "https://amorimuori.com/calendar" },
 };
-
-type Tone = "open" | "soon" | "out" | "closed";
-
-const PILL: Record<Tone, React.CSSProperties> = {
-  open: { background: "#2F7D4F", color: "#F8EAD5" },
-  soon: { background: "#E8C24A", color: "#3A3E43" },
-  out: { background: "#60403F", color: "#F8EAD5" },
-  closed: { background: "#F8EAD51a", color: "#F8EAD5aa" },
-};
-
-async function getUpcomingNights(): Promise<CalendarNight[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("service_nights")
-    .select("id, service_date, service_start, last_pickup, order_open_at, order_close_at")
-    .eq("is_enabled", true)
-    .gte("service_date", todayET())
-    .order("service_date", { ascending: true })
-    .limit(12);
-  return (data ?? []) as CalendarNight[];
-}
-
-// The featured night's live state comes from getAvailability (window + caps).
-function isSoldOut(a: AvailabilityData) {
-  const pizzas = Object.values(a.pizzaAvailability);
-  return a.poolRemaining === 0 || (pizzas.length > 0 && pizzas.every((p) => p.remaining === 0));
-}
-
-function nightPill(n: CalendarNight, a: AvailabilityData, now: number): { label: string; tone: Tone } {
-  if (n.id === a.serviceNight?.id) {
-    if (a.isOpen) return isSoldOut(a) ? { label: "Sold out", tone: "out" } : { label: "Ordering open", tone: "open" };
-    return { label: `Opens ${formatShortDay(n.order_open_at)}`, tone: "soon" };
-  }
-  if (now < new Date(n.order_open_at).getTime()) return { label: `Opens ${formatShortDay(n.order_open_at)}`, tone: "soon" };
-  if (now <= new Date(n.order_close_at).getTime()) return { label: "Ordering open", tone: "open" };
-  return { label: "Ordering closed", tone: "closed" };
-}
-
-function Pill({ label, tone }: { label: string; tone: Tone }) {
-  return (
-    <span
-      style={{
-        ...PILL[tone],
-        display: "inline-block",
-        fontSize: 12,
-        fontWeight: 700,
-        borderRadius: 100,
-        padding: "4px 11px",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
 
 function AddToCalendar({ nightId, primary = false }: { nightId: string; primary?: boolean }) {
   // The dev mock night has no row to build a file from

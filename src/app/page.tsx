@@ -1,44 +1,104 @@
-import { getAvailability } from "@/lib/availability";
-import { createServiceClient } from "@/lib/supabase/server";
+import Image from "next/image";
+import { getAvailability, type AvailabilityData } from "@/lib/availability";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { dateParts, formatPickupWindow, type CalendarNight } from "@/lib/calendar";
+import { featuredNightStatus, getUpcomingNights, isSoldOut, nightPill } from "@/lib/night-status";
+import { todayET } from "@/lib/service-nights";
+import { EVENT_PACKAGES, money } from "@/lib/event-packages";
+import { FAMILY_BUNDLE } from "@/lib/family-bundle";
+import type { Pizza, PizzaCategory } from "@/lib/types";
 import { LogoLockup } from "@/components/ui/Logo";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { RemindForm } from "./calendar/RemindForm";
 
 export const dynamic = "force-dynamic";
 
-// "17:30:00" → "5:30 PM"
-function formatServiceStart(time: string): string {
-  const [h, m] = time.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+const CREAM = "#F8EAD5";
+const INK = "#2C2F33";
+const INK_SOFT = "#5E5A52";
+const BASIL = "#2F7D4F";
+const GOLD = "#E8C24A";
+
+type MenuPizza = Pick<Pizza, "id" | "name" | "description" | "category" | "price_cents" | "sort_order" | "image_url">;
+
+// A failed query (or no database at all) shouldn't take the homepage down.
+async function safe<T>(load: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    console.error("[home] data load failed", err);
+    return fallback;
+  }
 }
 
-async function getServiceStart(): Promise<string> {
+const NO_AVAILABILITY: AvailabilityData = {
+  isOpen: false,
+  serviceNight: null,
+  nextOpenAt: null,
+  pizzaAvailability: {},
+  poolRemaining: 0,
+};
+
+// Same menu the order page shows: active pizzas, reds before whites, in menu order.
+async function getMenu(): Promise<MenuPizza[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("pizzas")
+    .select("id, name, description, category, price_cents, sort_order, image_url")
+    .eq("is_active", true)
+    .order("category")
+    .order("sort_order");
+  const pizzas = (data ?? []) as MenuPizza[];
+  const CATEGORY_ORDER: PizzaCategory[] = ["Pizze Rosse", "Pizze Bianche"];
+  const rank = (c: PizzaCategory) => {
+    const i = CATEGORY_ORDER.indexOf(c);
+    return i === -1 ? CATEGORY_ORDER.length : i;
+  };
+  return [...pizzas].sort((a, b) => rank(a.category) - rank(b.category) || a.sort_order - b.sort_order);
+}
+
+// Global pickup hours, for the structured data when no night is scheduled.
+async function getSettingsHours(): Promise<{ service_start: string; last_pickup: string } | null> {
   const supabase = await createServiceClient();
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-
-  // Next enabled service night's start time, falling back to global settings
-  const { data: night } = await supabase
-    .from("service_nights")
-    .select("service_start")
-    .eq("is_enabled", true)
-    .gte("service_date", today)
-    .order("service_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (night?.service_start) return formatServiceStart((night as { service_start: string }).service_start);
-
-  const { data: settings } = await supabase.from("settings").select("service_start").single();
-  if (settings?.service_start) return formatServiceStart((settings as { service_start: string }).service_start);
-
-  return "6:00 PM";
+  const { data } = await supabase.from("settings").select("service_start, last_pickup").single();
+  return (data as { service_start: string; last_pickup: string } | null) ?? null;
 }
 
-const INFO_CARDS = [
+// Photos in public/pizzas, keyed by the pizza's name without spaces, accents or "e"
+const PIZZA_PHOTOS: Record<string, string> = {
+  margherita: "/pizzas/margherita.png",
+  diavola: "/pizzas/diavola.png",
+  primavera: "/pizzas/primavera.png",
+  salsiccefriarielli: "/pizzas/salsicceFriarielli.png",
+};
+
+function photoKey(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && w !== "e")
+    .join("");
+}
+
+const isGlutenFree = (name: string) => /gluten[\s-]*free/i.test(name);
+const hasPesto = (name: string) => /pesto/i.test(name);
+
+function dollars(cents: number) {
+  return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+}
+
+const NUMBER_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+
+// "17:30:00" → "17:30"
+const hhmm = (t: string) => t.slice(0, 5);
+
+const STEPS = [
   {
     k: "01",
     t: "Order Wednesday",
-    d: "Pre-ordering opens each Wednesday for that week's Friday service. No phone calls, no lines.",
+    d: "Ordering opens the Wednesday before each service night. We email you when it does.",
   },
   {
     k: "02",
@@ -47,43 +107,188 @@ const INFO_CARDS = [
   },
   {
     k: "03",
-    t: "Pay & get the address",
-    d: "Check out by card or Apple Pay. Your Ashburn Farm pickup spot is revealed the moment payment clears.",
+    t: "Pay and get the address",
+    d: "Pay by card. Your Ashburn Farm pickup spot is revealed the moment payment clears.",
   },
 ];
 
+const eyebrow: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 2,
+  textTransform: "uppercase",
+  margin: 0,
+};
+
+const h2: React.CSSProperties = {
+  fontSize: "clamp(26px, 3.4vw, 32px)",
+  fontWeight: 900,
+  lineHeight: 1.15,
+  margin: "6px 0 0",
+};
+
+const sectionLink: React.CSSProperties = {
+  color: CREAM,
+  fontWeight: 700,
+  fontSize: 15,
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+};
+
+function shortDate(serviceDate: string) {
+  const p = dateParts(serviceDate);
+  return `${p.weekday.slice(0, 3)}, ${p.month} ${p.day}`;
+}
+
+function NextNightCard({ availability, today }: { availability: AvailabilityData; today: string }) {
+  const night = availability.serviceNight;
+  const status = featuredNightStatus(availability);
+
+  if (!night || !status) {
+    return (
+      <section aria-label="Next service" className="home-card rise" style={{ animationDelay: ".15s" }}>
+        <p style={{ ...eyebrow, color: BASIL }}>Next Friday Night Take</p>
+        <h2 className="font-display" style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.15, margin: 0 }}>
+          No dates on the calendar yet
+        </h2>
+        <p style={{ margin: 0, fontSize: 15.5, lineHeight: 1.55, color: INK_SOFT }}>
+          We&apos;re setting up the next few Fridays. Leave your email and we&apos;ll let you know when
+          ordering opens.
+        </p>
+        <div className="home-actions">
+          <a href="#remind" className="am-btn home-btn home-btn-primary">
+            Remind me
+          </a>
+          <a href="/calendar" className="am-btn home-btn home-btn-ghost">
+            All dates
+          </a>
+        </div>
+      </section>
+    );
+  }
+
+  const soldOut = availability.isOpen && isSoldOut(availability);
+  const left = availability.poolRemaining;
+  const total = night.nightly_total;
+  const pct = total > 0 ? Math.max(0, Math.min(100, (left / total) * 100)) : 0;
+
+  return (
+    <section aria-label="Next service" className="home-card rise" style={{ animationDelay: ".15s" }}>
+      <p style={{ ...eyebrow, color: BASIL }}>{night.service_date === today ? "Tonight" : "Next Friday Night Take"}</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <b className="font-display" style={{ fontSize: 44, fontWeight: 900, lineHeight: 1 }}>
+          {shortDate(night.service_date)}
+        </b>
+        <StatusPill {...status} />
+      </div>
+      <dl className="home-kv">
+        <dt>Pickup</dt>
+        <dd>{formatPickupWindow(night.service_start, night.last_pickup)}, pick your window</dd>
+        <dt>Where</dt>
+        <dd>Ashburn Farm. Exact spot sent after you pay.</dd>
+        <dt>Pizzas</dt>
+        <dd>
+          {soldOut
+            ? `All ${total} spoken for`
+            : availability.isOpen
+              ? `${left} of ${total} left`
+              : `${total} for the night`}
+        </dd>
+      </dl>
+      {availability.isOpen && (
+        <div
+          className="home-meter"
+          role="meter"
+          aria-label="Pizzas left"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={left}
+        >
+          <i style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <div className="home-actions">
+        {night.id !== "dev-mock" && (
+          <a href={`/api/calendar/${night.id}`} download className="am-btn home-btn home-btn-primary">
+            Add to my calendar
+          </a>
+        )}
+        <a href="/calendar" className="am-btn home-btn home-btn-ghost">
+          All dates
+        </a>
+      </div>
+    </section>
+  );
+}
+
+function PizzaPhoto({ pizza }: { pizza: MenuPizza }) {
+  const local = PIZZA_PHOTOS[photoKey(pizza.name)];
+  if (local) {
+    return (
+      <div className="home-pz-pic">
+        <Image src={local} alt="" fill sizes="(max-width: 760px) 45vw, 200px" style={{ objectFit: "contain" }} />
+      </div>
+    );
+  }
+  if (pizza.image_url) {
+    return (
+      <div className="home-pz-pic">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={pizza.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      </div>
+    );
+  }
+  return (
+    <div className="home-pz-pic" aria-hidden="true">
+      <div className="home-pz-placeholder" />
+    </div>
+  );
+}
+
+function ComingUpRow({ night, availability, now, today }: { night: CalendarNight; availability: AvailabilityData; now: number; today: string }) {
+  const p = dateParts(night.service_date);
+  const pill = nightPill(night, availability, now);
+  return (
+    <li className="cal-night" style={{ background: "#3A3E4399", border: "1px solid #F8EAD51a", borderRadius: 16, padding: "14px 18px" }}>
+      <div style={{ textAlign: "center" }}>
+        <span style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: GOLD, fontWeight: 700 }}>{p.month}</span>
+        <b className="font-display" style={{ display: "block", fontSize: 28, fontWeight: 900, lineHeight: 1 }}>
+          {p.day}
+        </b>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div className="font-display" style={{ fontWeight: 700, fontSize: 18 }}>Friday Night Take</div>
+        <div style={{ fontSize: 14, color: "#F8EAD599", marginTop: 2 }}>
+          {night.service_date === today ? "Tonight. " : `${p.weekday}. `}
+          Pickup {formatPickupWindow(night.service_start, night.last_pickup)}
+        </div>
+      </div>
+      <div className="cal-night-pill">
+        <StatusPill {...pill} />
+      </div>
+    </li>
+  );
+}
+
 export default async function Home() {
-  const availability = await getAvailability();
-  const serviceStart = await getServiceStart();
+  const [availability, upcoming, menu, settingsHours] = await Promise.all([
+    safe(getAvailability, NO_AVAILABILITY),
+    safe(() => getUpcomingNights(3), [] as CalendarNight[]),
+    safe(getMenu, [] as MenuPizza[]),
+    safe(getSettingsHours, null),
+  ]);
+  const now = Date.now();
+  const today = todayET();
   const isOpen = availability.isOpen;
+  const soldOut = isOpen && isSoldOut(availability);
   const openDayName = availability.nextOpenAt
     ? new Date(availability.nextOpenAt).toLocaleDateString("en-US", { weekday: "long", timeZone: "America/New_York" })
     : "Wednesday";
 
-  const serviceDate = availability.serviceNight?.service_date ?? null;
-  // "YYYY-MM-DD" → "Friday, June 20"
-  const serviceDateLabel = serviceDate
-    ? new Date(`${serviceDate}T12:00:00`).toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      })
-    : null;
-  const serviceDateShort = serviceDate
-    ? new Date(`${serviceDate}T12:00:00`).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-      })
-    : null;
-  // Two days before the service Friday → Wednesday
-  const orderingOpensLabel = serviceDate
-    ? (() => {
-        const d = new Date(`${serviceDate}T12:00:00`);
-        d.setDate(d.getDate() - 2);
-        return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-      })()
-    : null;
+  const menuHeading =
+    menu.length > 0 ? `${NUMBER_WORDS[menu.length] ?? menu.length} pizza${menu.length === 1 ? "" : "s"}, fired to order` : "The menu";
 
+  const hours = availability.serviceNight ?? settingsHours;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "FoodEstablishment",
@@ -107,319 +312,284 @@ export default async function Home() {
     openingHoursSpecification: {
       "@type": "OpeningHoursSpecification",
       dayOfWeek: "Friday",
-      opens: "17:30",
-      closes: "21:00",
+      opens: hours ? hhmm(hours.service_start) : "17:30",
+      closes: hours ? hhmm(hours.last_pickup) : "21:00",
     },
   };
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-      <div
-      style={{
-        minHeight: "100vh",
-        background: "#484D52",
-        position: "relative",
-        overflow: "hidden",
-        fontFamily: "var(--font-archivo), sans-serif",
-        color: "#F8EAD5",
-      }}
-    >
-      {/* Radial gradient atmosphere */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <div
         style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 70% 12%, #3A3E4300, #3A3E43cc)",
-          pointerEvents: "none",
-        }}
-      />
-      {/* Dotted texture */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          opacity: 0.04,
-          backgroundImage: "radial-gradient(#F8EAD5 1px, transparent 1px)",
-          backgroundSize: "26px 26px",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Nav */}
-      <nav
-        style={{
+          minHeight: "100vh",
+          background: "#484D52",
           position: "relative",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "22px 7vw",
+          overflow: "hidden",
+          fontFamily: "var(--font-archivo), sans-serif",
+          color: CREAM,
         }}
       >
-        <LogoLockup />
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        <a href="/events" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Events</a>
-        <a href="/calendar" style={{ fontSize: 14, color: "#F8EAD5aa", textDecoration: "none" }}>Calendar</a>
-        <a
-          href="/order"
-          className="am-btn"
-          style={{
-            background: "#F8EAD5",
-            color: "#484D52",
-            padding: "11px 22px",
-            borderRadius: 100,
-            fontSize: 14,
-          }}
-        >
-          {isOpen ? "Order now" : `Opens ${openDayName}`}
-        </a>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <section
-        style={{
-          position: "relative",
-          padding: "6vh 7vw 10vh",
-          maxWidth: 1100,
-        }}
-      >
-        {/* Green badge pill */}
-        <div
-          className="rise"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 9,
-            background: "#2F7D4F25",
-            border: "1px solid #2F7D4F66",
-            color: "#F8EAD5",
-            padding: "7px 15px",
-            borderRadius: 100,
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 30,
-          }}
-        >
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 99,
-              background: "#2F7D4F",
-              display: "inline-block",
-            }}
-          />
-          Friday Night Take · Ashburn Farm, VA
-        </div>
-
-        <h1
-          className="font-display rise"
-          style={{
-            fontSize: "clamp(48px, 9vw, 104px)",
-            fontWeight: 900,
-            lineHeight: 0.92,
-            letterSpacing: -1,
-            animationDelay: ".05s",
-          }}
-        >
-          Authentic
-          <br />
-          Neapolitan pizza,
-          <br />
-          <span style={{ fontStyle: "italic", color: "#FFF0DA" }}>
-            made for Fridays.
-          </span>
-        </h1>
-
-        <p
-          className="rise"
-          style={{
-            marginTop: 26,
-            maxWidth: 540,
-            fontSize: 18,
-            lineHeight: 1.55,
-            color: "#F8EAD5cc",
-            animationDelay: ".12s",
-          }}
-        >
-          Fired at 900°, 60-second bake, tomato sauce and fresh mozzarella and
-          more made fresh in <strong style={{ color: "#F8EAD5" }}>Ashburn Farm</strong>.{" "}
-          {serviceDateLabel && orderingOpensLabel ? (
-            <>
-              Next service is{" "}
-              <strong style={{ color: "#F8EAD5" }}>{serviceDateLabel}</strong>.{" "}
-              Ordering opens{" "}
-              <strong style={{ color: "#F8EAD5" }}>{orderingOpensLabel}</strong>.
-            </>
-          ) : (
-            <>
-              When we&apos;re running, ordering opens the Wednesday before.
-            </>
-          )}{" "}
-          Reserve your pickup window. Service starts{" "}
-          {serviceDateShort && <><strong style={{ color: "#F8EAD5" }}>{serviceDateShort}</strong>{" "}</>}
-          at <strong style={{ color: "#F8EAD5" }}>{serviceStart}</strong>.
-        </p>
-
-        {/* CTAs */}
-        <div
-          className="rise"
-          style={{
-            display: "flex",
-            gap: 14,
-            marginTop: 38,
-            flexWrap: "wrap",
-            animationDelay: ".18s",
-          }}
-        >
-          <a
-            href="/order"
-            className="am-btn"
-            style={{
-              background: "#F8EAD5",
-              color: "#484D52",
-              padding: "16px 34px",
-              borderRadius: 100,
-              fontSize: 16,
-            }}
-          >
-            {isOpen ? "Start your order →" : "See what’s cooking →"}
-          </a>
-          <a
-            href="/order"
-            className="am-btn"
-            style={{
-              background: "transparent",
-              color: "#F8EAD5",
-              padding: "16px 28px",
-              borderRadius: 100,
-              fontSize: 16,
-              border: "1.5px solid #F8EAD544",
-            }}
-          >
-            See the menu
-          </a>
-        </div>
-
-        {/* 01/02/03 info cards */}
+        {/* Radial gradient atmosphere */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 18,
-            marginTop: 70,
+            position: "absolute",
+            inset: 0,
+            background: "radial-gradient(circle at 70% 12%, #3A3E4300, #3A3E43cc)",
+            pointerEvents: "none",
           }}
-        >
-          {INFO_CARDS.map((card, i) => (
-            <div
-              key={card.k}
-              className="rise"
-              style={{
-                background: "#3A3E4399",
-                border: "1px solid #F8EAD51a",
-                borderRadius: 18,
-                padding: "26px 24px",
-                animationDelay: `${0.24 + i * 0.07}s`,
-              }}
-            >
-              <div
-                className="font-display"
-                style={{ fontSize: 30, color: "#2F7D4F", fontWeight: 900 }}
-              >
-                {card.k}
+        />
+        {/* Dotted texture */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            opacity: 0.04,
+            backgroundImage: "radial-gradient(#F8EAD5 1px, transparent 1px)",
+            backgroundSize: "26px 26px",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div className="home-wrap">
+          {/* Nav */}
+          <header className="home-nav">
+            <a href="/" aria-label="Amori Muori home" style={{ textDecoration: "none" }}>
+              <LogoLockup />
+            </a>
+            <nav aria-label="Site" className="home-nav-links">
+              <a href="/order">Order</a>
+              <a href="/calendar">Calendar</a>
+              <a href="/events">Events</a>
+              <a href="/order" className="am-btn home-btn home-btn-primary home-nav-cta">
+                {isOpen ? "Order now" : `Opens ${openDayName}`}
+              </a>
+            </nav>
+          </header>
+
+          <main>
+            {/* Hero */}
+            <section className="home-hero">
+              <div>
+                <div
+                  className="rise"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 9,
+                    background: "#2F7D4F25",
+                    border: "1px solid #2F7D4F66",
+                    color: CREAM,
+                    padding: "7px 15px",
+                    borderRadius: 100,
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: 99, background: BASIL, display: "inline-block", flexShrink: 0 }} />
+                  Friday Night Take · Ashburn Farm, VA
+                </div>
+
+                <h1
+                  className="font-display rise"
+                  style={{
+                    fontSize: "clamp(40px, 6.4vw, 72px)",
+                    fontWeight: 900,
+                    lineHeight: 0.98,
+                    letterSpacing: -1,
+                    margin: "22px 0 0",
+                    animationDelay: ".05s",
+                  }}
+                >
+                  Authentic Neapolitan pizza,{" "}
+                  <span style={{ fontStyle: "italic", color: "#FFF0DA" }}>made for Fridays.</span>
+                </h1>
+
+                <p
+                  className="rise"
+                  style={{
+                    margin: "22px 0 0",
+                    maxWidth: 540,
+                    fontSize: 18,
+                    lineHeight: 1.55,
+                    color: "#F8EAD5cc",
+                    animationDelay: ".1s",
+                  }}
+                >
+                  Fired at 900°, 60-second bake, made fresh in{" "}
+                  <strong style={{ color: CREAM }}>Ashburn Farm</strong>. Pre-order online, pick a pickup time,
+                  and we&apos;ll have it ready. We also bring the oven to your party.
+                </p>
+
+                <div className="home-actions rise" style={{ marginTop: 30, animationDelay: ".14s" }}>
+                  {isOpen && !soldOut ? (
+                    <a href="/order" className="am-btn home-btn home-btn-primary home-btn-lg">
+                      Order now
+                    </a>
+                  ) : (
+                    <a href="#remind" className="am-btn home-btn home-btn-primary home-btn-lg">
+                      Remind me
+                    </a>
+                  )}
+                  <a href="#menu" className="am-btn home-btn home-btn-outline home-btn-lg">
+                    See the menu
+                  </a>
+                </div>
               </div>
-              <div style={{ fontWeight: 700, fontSize: 17, marginTop: 10 }}>
-                {card.t}
+
+              <NextNightCard availability={availability} today={today} />
+            </section>
+
+            {/* Menu */}
+            <section id="menu" aria-label="Menu" className="home-sec">
+              <div className="home-sec-head">
+                <div>
+                  <p style={{ ...eyebrow, color: GOLD }}>On the menu</p>
+                  <h2 className="font-display" style={h2}>
+                    {menuHeading}
+                  </h2>
+                </div>
+                <a href="/order" style={sectionLink}>
+                  Order →
+                </a>
               </div>
-              <div
-                style={{
-                  color: "#F8EAD599",
-                  fontSize: 14.5,
-                  marginTop: 7,
-                  lineHeight: 1.5,
-                }}
-              >
-                {card.d}
+
+              {menu.length > 0 ? (
+                <ul className="home-menu">
+                  {menu.map((pizza) => (
+                    <li key={pizza.id} className="home-pz">
+                      <PizzaPhoto pizza={pizza} />
+                      <b className="font-display" style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>
+                        {pizza.name}
+                      </b>
+                      <span style={{ fontWeight: 700, color: GOLD }}>{dollars(pizza.price_cents)}</span>
+                      {pizza.description && <p>{pizza.description}</p>}
+                      {isGlutenFree(pizza.name) && <p className="home-pz-flag">Bakes in a separate oven.</p>}
+                      {hasPesto(pizza.name) && <p className="home-pz-flag">Pesto contains pine nuts.</p>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ fontSize: 15, color: "#F8EAD599", margin: 0 }}>
+                  The menu is on the <a href="/order" style={{ color: CREAM }}>order page</a>.
+                </p>
+              )}
+
+              <p className="home-note">
+                {`Order ${FAMILY_BUNDLE.minPizzas} or more pizzas and get ${dollars(FAMILY_BUNDLE.discountCents)} off. `}
+                Share your code after you order: on a friend&apos;s first order of two pizzas, the cheaper one is free.
+                When they pick up, you get the same deal on your next order.
+              </p>
+            </section>
+
+            {/* How it works */}
+            <section aria-label="How Friday works" className="home-sec">
+              <div className="home-sec-head">
+                <div>
+                  <p style={{ ...eyebrow, color: GOLD }}>How Friday works</p>
+                  <h2 className="font-display" style={h2}>
+                    Three steps, no lines
+                  </h2>
+                </div>
               </div>
+              <div className="home-three">
+                {STEPS.map((s) => (
+                  <div
+                    key={s.k}
+                    style={{ background: "#3A3E4399", border: "1px solid #F8EAD51a", borderRadius: 18, padding: "22px 22px" }}
+                  >
+                    <div className="font-display" style={{ fontSize: 30, color: BASIL, fontWeight: 900, lineHeight: 1 }}>
+                      {s.k}
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 17, marginTop: 10 }}>{s.t}</div>
+                    <div style={{ color: "#F8EAD599", fontSize: 14.5, marginTop: 6, lineHeight: 1.5 }}>{s.d}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Coming up + Events */}
+            <div className="home-sec home-split">
+              <section aria-label="Coming up">
+                <div className="home-sec-head">
+                  <div>
+                    <p style={{ ...eyebrow, color: GOLD }}>Calendar</p>
+                    <h2 className="font-display" style={h2}>
+                      Coming up
+                    </h2>
+                  </div>
+                  <a href="/calendar" style={sectionLink}>
+                    Full calendar →
+                  </a>
+                </div>
+                {upcoming.length === 0 ? (
+                  <p style={{ fontSize: 15, color: "#F8EAD599", margin: 0 }}>
+                    Nothing scheduled yet. <a href="#remind" style={{ color: CREAM }}>Get a reminder</a> when the next Friday is set.
+                  </p>
+                ) : (
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
+                    {upcoming.map((n) => (
+                      <ComingUpRow key={n.id} night={n} availability={availability} now={now} today={today} />
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section aria-label="Events" className="home-card">
+                <p style={{ ...eyebrow, color: BASIL }}>Events</p>
+                <h2 className="font-display" style={{ ...h2, margin: 0, color: INK }}>
+                  Bring the oven to your party.
+                </h2>
+                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: INK_SOFT }}>
+                  We set up our canopy and oven, cook in front of your guests, and clean up after. Gluten free on
+                  request.
+                </p>
+                <ul className="home-mini-pk">
+                  {EVENT_PACKAGES.map((pkg) => (
+                    <li key={pkg.id}>
+                      <b className="font-display">{pkg.name}</b>
+                      <span>
+                        {money(pkg.perGuest)} per guest
+                        {pkg.priceNote ? `, ${pkg.priceNote.toLowerCase()}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div>
+                  <a href="/events" className="am-btn home-btn home-btn-primary">
+                    Plan your event
+                  </a>
+                </div>
+              </section>
             </div>
-          ))}
-        </div>
-        {/* Catering */}
-        <div
-          className="rise"
-          style={{
-            marginTop: 70,
-            background: "#2F7D4F1f",
-            border: "1px solid #2F7D4F55",
-            borderRadius: 22,
-            padding: "38px 34px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 24,
-            flexWrap: "wrap",
-            animationDelay: ".45s",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <p style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "#2F7D4F", fontWeight: 700, margin: 0 }}>
-              Catering
-            </p>
-            <h2 className="font-display" style={{ fontSize: 30, fontWeight: 900, margin: "8px 0 0", lineHeight: 1.15 }}>
-              Bring the oven to your event.
-            </h2>
-            <p style={{ marginTop: 10, fontSize: 15.5, lineHeight: 1.55, color: "#F8EAD5bb", margin: "10px 0 0" }}>
-              Birthdays, block parties, weddings, corporate gatherings — fresh
-              Neapolitan pizza fired on site. Tell us about your event.
-            </p>
-          </div>
-          <a
-            href="/events"
-            className="am-btn"
-            style={{
-              background: "#2F7D4F",
-              color: "#F8EAD5",
-              borderRadius: 100,
-              padding: "16px 32px",
-              fontSize: 16,
-              fontWeight: 700,
-              textDecoration: "none",
-              flexShrink: 0,
-            }}
-          >
-            Plan your event →
-          </a>
-        </div>
-      </section>
 
-      {/* Footer */}
-      <footer
-        style={{
-          position: "relative",
-          borderTop: "1px solid #F8EAD514",
-          padding: "22px 7vw",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <LogoLockup />
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <a href="/privacy" style={{ fontSize: 13, color: "#F8EAD533", textDecoration: "none" }}>Privacy Policy</a>
-            <a href="/terms" style={{ fontSize: 13, color: "#F8EAD533", textDecoration: "none" }}>Terms</a>
-            <p style={{ fontSize: 13, color: "#F8EAD533", margin: 0 }}>Ashburn Farm, VA</p>
-          </div>
+            {/* Reminder band */}
+            <section id="remind" aria-label="Get reminders" className="home-band">
+              <div>
+                <h2 className="font-display" style={{ ...h2, margin: 0 }}>
+                  Never miss a Friday
+                </h2>
+                <p style={{ margin: "8px 0 0", color: "#F8EAD5cc", fontSize: 15.5, lineHeight: 1.55 }}>
+                  One email the Wednesday before each service night. Nothing else.
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <RemindForm />
+              </div>
+            </section>
+          </main>
+
+          {/* Footer */}
+          <footer className="home-foot">
+            <span>Amori Muori · Ashburn Farm, VA</span>
+            <nav aria-label="Footer" className="home-foot-links">
+              <a href="/calendar">Calendar</a>
+              <a href="/events">Events</a>
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
+            </nav>
+          </footer>
         </div>
-      </footer>
       </div>
     </>
   );
