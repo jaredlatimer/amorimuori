@@ -59,6 +59,14 @@ export async function POST(request: Request) {
     );
   }
 
+  // Quick refund is only for orders not yet ready; finished orders are refunded in Stripe.
+  if (o.status !== "new" && o.status !== "making") {
+    return NextResponse.json(
+      { error: "Only New or Making orders can be refunded here. Use the Stripe dashboard for finished orders." },
+      { status: 400 }
+    );
+  }
+
   if (!o.stripe_payment_intent_id) {
     return NextResponse.json(
       {
